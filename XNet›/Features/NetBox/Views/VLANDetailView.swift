@@ -5,7 +5,9 @@ struct VLANDetailView: View {
     let vlan: NetBoxVLAN
     let allDevices: [NetBoxDevice]
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @State private var isEditing = false; @State private var ename = ""; @State private var edesc = ""
+    @State private var showingDeleteConfirmation = false
     
     var body: some View {
         List {
@@ -31,9 +33,20 @@ struct VLANDetailView: View {
             
             Section("Actions") {
                 Button("Edit Details") { ename = vlan.name; edesc = vlan.vlanDescription; isEditing = true }.foregroundStyle(.blue)
+                Button("Delete VLAN", role: .destructive) { showingDeleteConfirmation = true }.foregroundStyle(.red)
             }
         }
         .navigationTitle("VLAN \(vlan.vid)")
+        .confirmationDialog("Delete VLAN?", isPresented: $showingDeleteConfirmation) {
+            Button("Delete VLAN \(vlan.vid)", role: .destructive) {
+                modelContext.delete(vlan)
+                try? modelContext.save()
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This will permanently remove the VLAN from the inventory. All associated prefixes will be unlinked.")
+        }
         .sheet(isPresented: $isEditing) {
              VStack(spacing: 20) {
                   Text("Edit Virtual LAN").font(.headline)

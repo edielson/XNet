@@ -4,10 +4,13 @@ import SwiftData
 struct VLANGroupDetailView: View {
     let group: NetBoxVLANGroup
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @State private var isEditing = false; @State private var ename = ""; @State private var emin = ""; @State private var emax = ""
+    @State private var showingDeleteConfirmation = false
     
     var body: some View {
         List {
+            // ... (rest of sections)
             Section("Group Boundaries") {
                 LabeledContent("Group Name", value: group.name)
                 LabeledContent("Range (ID)", value: "\(group.minVID) - \(group.maxVID)")
@@ -28,10 +31,20 @@ struct VLANGroupDetailView: View {
                 Button("Modify Range Constraints") { 
                     ename = group.name; emin = "\(group.minVID)"; emax = "\(group.maxVID)"; isEditing = true 
                 }.foregroundStyle(.blue)
-                Button(role: .destructive) { modelContext.delete(group); try? modelContext.save() } label: { Label("Delete Group", systemImage: "trash") }
+                Button("Delete Group", role: .destructive) { showingDeleteConfirmation = true }.foregroundStyle(.red)
             }
         }
         .navigationTitle(group.name)
+        .confirmationDialog("Delete Group?", isPresented: $showingDeleteConfirmation) {
+            Button("Delete Group \(group.name)", role: .destructive) {
+                modelContext.delete(group)
+                try? modelContext.save()
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This will permanently remove the group. Note: The member VLANs will NOT be deleted, they will just become ungrouped.")
+        }
         .sheet(isPresented: $isEditing) {
              VStack(spacing: 20) {
                   Text("Edit Group Constraints").font(.headline)

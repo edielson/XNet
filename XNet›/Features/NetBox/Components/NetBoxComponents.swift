@@ -6,13 +6,21 @@ struct NetBoxSitesDashboard: View {
     @Query(sort: \NetBoxSite.name) private var sites: [NetBoxSite]
     @Binding var selection: NetBoxView.NetBoxNavigationItem?
     var body: some View {
-        List(sites) { site in
-            Button { selection = .site(site.id) } label: {
-                VStack(alignment: .leading) {
-                    Text(site.name).font(.headline).foregroundStyle(.primary)
-                    Text("\(site.devices.count) Units • \(site.prefixes.count) Nets").font(.caption).foregroundStyle(.secondary)
+        List {
+            ForEach(sites) { site in
+                Button { selection = .site(site.id) } label: {
+                    VStack(alignment: .leading) {
+                        Text(site.name).font(.headline).foregroundStyle(.primary)
+                        Text("\(site.devices.count) Units • \(site.prefixes.count) Nets").font(.caption).foregroundStyle(.secondary)
+                    }
+                }.buttonStyle(.plain)
+            }
+            .onDelete { indexSet in
+                for index in indexSet {
+                    modelContext.delete(sites[index])
                 }
-            }.buttonStyle(.plain)
+                try? modelContext.save()
+            }
         }.listStyle(.inset(alternatesRowBackgrounds: true))
     }
 }
@@ -20,15 +28,24 @@ struct NetBoxSitesDashboard: View {
 struct NetBoxAllDevicesView: View {
     let devices: [NetBoxDevice]
     @Binding var selection: NetBoxView.NetBoxNavigationItem?
+    @Environment(\.modelContext) private var modelContext
     var body: some View {
-        List(devices) { device in
-            Button { selection = .device(device.id) } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "cpu.fill").font(.title3).foregroundStyle(.blue.gradient)
-                    VStack(alignment: .leading) { Text(device.name).font(.headline); Text(device.site?.name ?? "Global Space").font(.caption).foregroundStyle(.secondary) }
-                    Spacer(); Text(device.deviceType).font(.system(size: 9, weight: .bold)).foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 2).background(Color.blue).cornerRadius(4)
-                }.padding(.vertical, 4)
-            }.buttonStyle(.plain)
+        List {
+            ForEach(devices) { device in
+                Button { selection = .device(device.id) } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "cpu.fill").font(.title3).foregroundStyle(.blue.gradient)
+                        VStack(alignment: .leading) { Text(device.name).font(.headline); Text(device.site?.name ?? "Global Space").font(.caption).foregroundStyle(.secondary) }
+                        Spacer(); Text(device.deviceType).font(.system(size: 9, weight: .bold)).foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 2).background(Color.blue).cornerRadius(4)
+                    }.padding(.vertical, 4)
+                }.buttonStyle(.plain)
+            }
+            .onDelete { indexSet in
+                for index in indexSet {
+                    modelContext.delete(devices[index])
+                }
+                try? modelContext.save()
+            }
         }.listStyle(.inset(alternatesRowBackgrounds: true))
     }
 }
@@ -36,14 +53,23 @@ struct NetBoxAllDevicesView: View {
 struct NetBoxIPAMDashboard: View {
     @Query(sort: \NetBoxPrefix.cidr) private var allPrefixes: [NetBoxPrefix]
     @Binding var selection: NetBoxView.NetBoxNavigationItem?
+    @Environment(\.modelContext) private var modelContext
     var body: some View {
-        List(allPrefixes) { prefix in
-            Button { selection = .prefix(prefix.id) } label: {
-                HStack {
-                    VStack(alignment: .leading) { Text(prefix.cidr).font(.system(.body, design: .monospaced, weight: .bold)); Text(prefix.site?.name ?? "Global").font(.caption2).foregroundStyle(.secondary) }
-                    Spacer(); if let vlan = prefix.vlan { Text("VLAN \(vlan.vid)").font(.caption).padding(4).background(Color.purple.opacity(0.1)).cornerRadius(4) }
+        List {
+            ForEach(allPrefixes) { prefix in
+                Button { selection = .prefix(prefix.id) } label: {
+                    HStack {
+                        VStack(alignment: .leading) { Text(prefix.cidr).font(.system(.body, design: .monospaced, weight: .bold)); Text(prefix.site?.name ?? "Global").font(.caption2).foregroundStyle(.secondary) }
+                        Spacer(); if let vlan = prefix.vlan { Text("VLAN \(vlan.vid)").font(.caption).padding(4).background(Color.purple.opacity(0.1)).cornerRadius(4) }
+                    }
+                }.buttonStyle(.plain)
+            }
+            .onDelete { indexSet in
+                for index in indexSet {
+                    modelContext.delete(allPrefixes[index])
                 }
-            }.buttonStyle(.plain)
+                try? modelContext.save()
+            }
         }.listStyle(.inset(alternatesRowBackgrounds: true))
     }
 }

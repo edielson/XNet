@@ -40,7 +40,15 @@ struct NetBoxView: View {
                     ForEach(allSites) { s in NavigationLink(value: NetBoxNavigationItem.site(s.id)) { Text(s.name) } }
                 }
                 Section("VLAN Contexts") {
-                    ForEach(allVLANGroups) { g in NavigationLink(value: NetBoxNavigationItem.group(g.id)) { Text(g.name) } }
+                    ForEach(allVLANGroups) { g in 
+                        NavigationLink(value: NetBoxNavigationItem.group(g.id)) { Text(g.name) }
+                    }
+                    .onDelete { indexSet in
+                        for index in indexSet {
+                            modelContext.delete(allVLANGroups[index])
+                        }
+                        try? modelContext.save()
+                    }
                 }
             }
             .listStyle(.sidebar).navigationTitle("NetBox")
