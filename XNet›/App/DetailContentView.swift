@@ -24,6 +24,10 @@ struct DetailContentView: View {
             FTPView()
         case .subnetCalculator:
             SubnetCalculatorView()
+        case .netbox:
+            NetBoxView()
+        case .devices:
+            InventoryDevicesView()
         default:
             PlaceholderView(tool: tool)
         }

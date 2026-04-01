@@ -29,6 +29,7 @@ struct ScannedDevice: Identifiable, Sendable {
     let ip: String
     let mac: String
     let hostname: String
+    let vendor: String
 }
 
 struct ScannedPort: Identifiable, Sendable {

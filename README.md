@@ -11,12 +11,20 @@
 ## ✨ Features
 
 ### 🔍 Diagnostics
-- **IP Scanner (LAN)**: High-speed discovery of devices on your local network.
+- **IP Scanner**: High-speed discovery of devices on local and public networks.
 - **Port Scanner**: Rapidly identify open services and potential vulnerabilities.
 - **Visual Ping**: Real-time ICMP monitoring with latency statistics.
 - **Traceroute**: Map network hops and identify routing bottlenecks.
 
-### 📐 Planning & Calculation
+### 📐 Planning & Infrastructure (NetBox)
+- **NetBox Dashboard (DCIM & IPAM)**: 
+  - **Site Management**: Physical PoP and node organization.
+  - **Hardware Inventory**: Integrated DCIM for routers, switches, and servers.
+  - **IPAM (Global Subnets)**: Hierarchical IPv4 IP management with prefix allocation.
+  - **Multi-IP Support**: Link multiple IP addresses (WAN, LAN, Loopback) to a single device.
+  - **Searchable Inventory**: High-performance device selector for rapid IP assignment.
+  - **SwiftData Persistence**: Fully persistent local database with automatic synchronization.
+
 - **Subnet Calculator (The Planner)**: 
   - Advanced IPv4 bitwise calculations.
   - Real-time updates for Network, Broadcast, Mask, and Wildcard info.

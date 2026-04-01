@@ -1,21 +1,12 @@
-//
-//  ContentView.swift
-//  XNet›
-//
-//  Created by kaua on 28/03/26.
-//
-
 import SwiftUI
 
 struct ContentView: View {
-    // Estado para controlar a seleção na barra lateral
     @State private var selection: Tool? = .devices
 
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
                 
-                // SEÇÃO DE CADASTROS (INVENTORY)
                 Section("Inventory") {
                     NavigationLink(value: Tool.devices) {
                         Label(Tool.devices.name, systemImage: Tool.devices.icon)
@@ -25,7 +16,6 @@ struct ContentView: View {
                     }
                 }
                 
-                // SEÇÃO DE DIAGNÓSTICO (DIAGNOSTICS)
                 Section("Diagnostics") {
                     ForEach([Tool.ipScan, Tool.portScan, Tool.ping, Tool.traceroute], id: \.self) { tool in
                         NavigationLink(value: tool) {
@@ -34,12 +24,20 @@ struct ContentView: View {
                     }
                 }
                 
-                // SEÇÃO DE ACESSO REMOTO (REMOTE ACCESS)
                 Section("Remote Access") {
                     ForEach([Tool.terminal, Tool.ftp], id: \.self) { tool in
                         NavigationLink(value: tool) {
                             Label(tool.name, systemImage: tool.icon)
                         }
+                    }
+                }
+                
+                Section("Planning & NetBox") {
+                    NavigationLink(value: Tool.netbox) {
+                        Label(Tool.netbox.name, systemImage: Tool.netbox.icon)
+                    }
+                    NavigationLink(value: Tool.subnetCalculator) {
+                        Label(Tool.subnetCalculator.name, systemImage: Tool.subnetCalculator.icon)
                     }
                 }
             }
@@ -48,7 +46,6 @@ struct ContentView: View {
             .frame(minWidth: 200)
             
         } detail: {
-            // Área de conteúdo que muda conforme a seleção
             if let tool = selection {
                 DetailContentView(tool: tool)
             } else {
@@ -60,7 +57,6 @@ struct ContentView: View {
     }
 }
 
-// Preview para o Xcode
 #Preview {
     ContentView()
 }

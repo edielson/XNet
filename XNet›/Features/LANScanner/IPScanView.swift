@@ -1,17 +1,12 @@
-//
-//  IPScanView.swift
-//  XNet›
-//
-
 import SwiftUI
 
 struct IPScanView: View {
-    @State private var lanScanner = LANScannerService()
+    @State private var ipScanner = IPScannerService()
     @State private var subnet: String = "192.168.1.0/24"
     @State private var scannedDevices: [ScannedDevice] = []
     @State private var isScanning = false
     @State private var currentTask: Task<Void, Never>? = nil
-    @State private var statusText: String = "Enter IP range (e.g. 192.168.1.0/24 or 10.0.0.1-10.0.0.50)"
+    @State private var statusText: String = "Enter IP range (e.g. 192.168.1.0/24 or 8.8.8.1-8.8.8.10)"
     
     var body: some View {
         VStack(spacing: 20) {
@@ -61,6 +56,13 @@ struct IPScanView: View {
                     Text(device.mac)
                         .font(.system(.body, design: .monospaced))
                 }
+                .width(160)
+                
+                TableColumn("Vendor") { device in
+                    Text(device.vendor)
+                        .foregroundStyle(device.vendor == "Unknown Vendor" ? Color.secondary : Color.blue)
+                }
+                .width(180)
                 
                 TableColumn("Hostname") { device in
                     Text(device.hostname)
@@ -93,10 +95,10 @@ struct IPScanView: View {
     private func startScan() {
         scannedDevices.removeAll()
         isScanning = true
-        statusText = "Scanning native subnet \(subnet)..."
+        statusText = "Scanning \(subnet)..."
         
         currentTask = Task {
-            let stream = lanScanner.scan(subnet: subnet)
+            let stream = ipScanner.scan(subnet: subnet)
             var buffer: [ScannedDevice] = []
             var lastUpdate = Date()
             
@@ -104,11 +106,9 @@ struct IPScanView: View {
                 if Task.isCancelled { break }
                 buffer.append(device)
                 
-                // Batch updates every 10 devices or every 250ms to keep UI fluid
                 if buffer.count >= 10 || Date().timeIntervalSince(lastUpdate) > 0.25 {
                     scannedDevices.append(contentsOf: buffer)
                     
-                    // Ordenação inteligente por octetos numéricos do IP
                     scannedDevices.sort { dev1, dev2 in
                         let parts1 = dev1.ip.split(separator: ".").compactMap { Int($0) }
                         let parts2 = dev2.ip.split(separator: ".").compactMap { Int($0) }
@@ -125,7 +125,6 @@ struct IPScanView: View {
             
             if !buffer.isEmpty {
                 scannedDevices.append(contentsOf: buffer)
-                // Ordenação final
                 scannedDevices.sort { dev1, dev2 in
                     let parts1 = dev1.ip.split(separator: ".").compactMap { Int($0) }
                     let parts2 = dev2.ip.split(separator: ".").compactMap { Int($0) }

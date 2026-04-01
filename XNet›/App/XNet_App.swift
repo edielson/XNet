@@ -1,9 +1,5 @@
-//
-//  XNet_App.swift
-//  XNet›
-//
-
 import SwiftUI
+import SwiftData
 
 @main
 struct XNet_App: App {
@@ -11,5 +7,11 @@ struct XNet_App: App {
         WindowGroup {
             ContentView()
         }
+        .modelContainer(for: [
+            NetBoxSite.self, 
+            NetBoxPrefix.self, 
+            NetBoxIP.self, 
+            NetBoxDevice.self
+        ])
     }
 }

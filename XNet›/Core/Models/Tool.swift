@@ -7,7 +7,7 @@ import SwiftUI
 
 enum Tool: String, CaseIterable, Identifiable, Hashable {
     // Cadastros (Inventory)
-    case devices, deviceGroups
+    case devices, deviceGroups, netbox
     // Diagnóstico (Diagnostics)
     case ipScan, portScan, ping, traceroute
     // Remoto (Remote Access)
@@ -19,13 +19,14 @@ enum Tool: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .devices: return "Devices"
         case .deviceGroups: return "Device Groups"
-        case .ipScan: return "IP Scan"
+        case .ipScan: return "IP Scanner"
         case .portScan: return "Port Scan"
         case .ping: return "Ping"
         case .traceroute: return "Traceroute"
         case .terminal: return "Terminal"
         case .ftp: return "FTP"
         case .subnetCalculator: return "Subnet Calculator"
+        case .netbox: return "NetBox"
         }
     }
     
@@ -40,6 +41,7 @@ enum Tool: String, CaseIterable, Identifiable, Hashable {
         case .terminal: return "terminal"
         case .ftp: return "arrow.up.doc"
         case .subnetCalculator: return "plus.forwardslash.minus"
+        case .netbox: return "square.stack.3d.up"
         }
     }
 }

@@ -105,6 +105,24 @@ class SubnetCalculatorService {
             String(val & 0xFF, radix: 2).paddingLeft(toLength: 8, withPad: "0")
         ]
     }
+    
+    func generateSubnets(baseIp: String, currentCidr: Int, targetCidr: Int) -> [String] {
+        guard let baseInt = ipToUInt32(baseIp), targetCidr > currentCidr, targetCidr <= 32 else { return [] }
+        
+        let subnetsInNetwork = Int(pow(2.0, Double(targetCidr - currentCidr)))
+        let subnetsToReturn = min(subnetsInNetwork, 256)
+        let hostsInSubnet = UInt32(pow(2.0, Double(32 - targetCidr)))
+        
+        var results: [String] = []
+        let currentMask: UInt32 = currentCidr == 0 ? 0 : (0xFFFFFFFF << (32 - currentCidr))
+        let networkBase = baseInt & currentMask
+        
+        for i in 0..<subnetsToReturn {
+            let subnetStart = networkBase + (UInt32(i) * hostsInSubnet)
+            results.append("\(uint32ToIp(subnetStart))/\(targetCidr)")
+        }
+        return results
+    }
 }
 
 extension String {
