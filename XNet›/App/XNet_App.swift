@@ -11,7 +11,9 @@ struct XNet_App: App {
             NetBoxSite.self, 
             NetBoxPrefix.self, 
             NetBoxIP.self, 
-            NetBoxDevice.self
+            NetBoxDevice.self,
+            NetBoxVLANGroup.self,
+            NetBoxVLAN.self
         ])
     }
 }

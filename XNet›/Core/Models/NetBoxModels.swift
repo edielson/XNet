@@ -9,6 +9,8 @@ final class NetBoxSite {
     var prefixes: [NetBoxPrefix] = []
     @Relationship(deleteRule: .cascade, inverse: \NetBoxDevice.site)
     var devices: [NetBoxDevice] = []
+    @Relationship(deleteRule: .cascade, inverse: \NetBoxVLAN.site)
+    var vlans: [NetBoxVLAN] = []
     
     init(name: String, siteDescription: String = "") {
         self.name = name
@@ -34,24 +36,66 @@ final class NetBoxDevice {
 }
 
 @Model
+final class NetBoxVLANGroup {
+    var name: String
+    var groupDescription: String
+    var minVID: Int = 1
+    var maxVID: Int = 4094
+    
+    @Relationship(deleteRule: .cascade, inverse: \NetBoxVLAN.vlanGroup)
+    var vlans: [NetBoxVLAN] = []
+    
+    init(name: String, groupDescription: String = "", minVID: Int = 1, maxVID: Int = 4094) {
+        self.name = name
+        self.groupDescription = groupDescription
+        self.minVID = minVID
+        self.maxVID = maxVID
+    }
+}
+
+@Model
+final class NetBoxVLAN {
+    var vid: Int
+    var name: String
+    var vlanDescription: String
+    var status: String
+    
+    var site: NetBoxSite?
+    var vlanGroup: NetBoxVLANGroup?
+    
+    @Relationship(deleteRule: .nullify, inverse: \NetBoxPrefix.vlan)
+    var prefixes: [NetBoxPrefix] = []
+    
+    init(vid: Int, name: String, vlanDescription: String = "", status: String = "Active", site: NetBoxSite? = nil, vlanGroup: NetBoxVLANGroup? = nil) {
+        self.vid = vid
+        self.name = name
+        self.vlanDescription = vlanDescription
+        self.status = status
+        self.site = site
+        self.vlanGroup = vlanGroup
+    }
+}
+
+@Model
 final class NetBoxPrefix {
     var cidr: String
     var prefixDescription: String
     var site: NetBoxSite?
+    var vlan: NetBoxVLAN?
     @Relationship(deleteRule: .cascade, inverse: \NetBoxIP.prefix) 
     var ips: [NetBoxIP] = []
     
-    init(cidr: String, prefixDescription: String = "", site: NetBoxSite? = nil) {
+    init(cidr: String, prefixDescription: String = "", site: NetBoxSite? = nil, vlan: NetBoxVLAN? = nil) {
         self.cidr = cidr
         self.prefixDescription = prefixDescription
         self.site = site
+        self.vlan = vlan
     }
 }
 
 @Model
 final class NetBoxIP {
     var address: String
-    // Making this optional to solve the 134110 migration error
     var interfaceLabel: String?
     var usageDescription: String?
     var status: String?
@@ -59,7 +103,6 @@ final class NetBoxIP {
     var prefix: NetBoxPrefix?
     var device: NetBoxDevice?
     
-    // Computed property for easy access with default value
     var label: String { interfaceLabel ?? "LAN" }
     var note: String { usageDescription ?? "" }
     

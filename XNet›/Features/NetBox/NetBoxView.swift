@@ -3,222 +3,79 @@ import SwiftData
 
 struct NetBoxView: View {
     @Environment(\.modelContext) private var modelContext
-    @State private var selectedTab = "Sites"
-    @State private var showingAddSheet = false
+    @State private var navigationSelection: NetBoxNavigationItem? = .allSites
+    
+    // UI Feedback
     @State private var toastMessage = ""
     @State private var showToast = false
-    
-    // Form States
-    @State private var newName = ""
-    @State private var newDesc = ""
-    @State private var newType = "Router"
-    @State private var selectedSiteID: PersistentIdentifier?
-    let deviceTypes = ["Router", "Switch", "Firewall", "Server", "Workstation", "Other"]
+    @State private var showingAddSite = false
+    @State private var showingAddPrefix = false
+    @State private var showingAddDevice = false
+    @State private var showingAddVLANGroup = false
+    @State private var showingAddVLAN = false
     
     @Query(sort: \NetBoxSite.name) private var allSites: [NetBoxSite]
     @Query(sort: \NetBoxDevice.name) private var allDevices: [NetBoxDevice]
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // NATIVE TOOLBAR (Clean 2-Column approach)
-            HStack {
-                Picker("Category", selection: $selectedTab) {
-                    Label("Sites", systemImage: "building.2").tag("Sites")
-                    Label("Devices", systemImage: "cpu").tag("Devices")
-                    Label("IPAM", systemImage: "network").tag("IPAM")
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 300)
-                
-                Spacer()
-                
-                Button {
-                    resetForms()
-                    showingAddSheet = true
-                } label: {
-                    Label("Add", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            .padding()
-            .background(Color(NSColor.windowBackgroundColor))
-            
-            Divider()
-            
-            // Unfolded View logic (2 columns max for clarity)
-            ZStack(alignment: .bottom) {
-                switch selectedTab {
-                case "Sites": NetBoxSitesView()
-                case "Devices": NetBoxAllDevicesView(devices: allDevices)
-                default: NetBoxIPAMView(allDevices: allDevices)
-                }
-                
-                if showToast {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                        Text(toastMessage).font(.caption).bold()
-                    }
-                    .padding(.horizontal, 16).padding(.vertical, 8)
-                    .background(.ultraThinMaterial).clipShape(Capsule())
-                    .padding(.bottom, 20).transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            }
-        }
-        .sheet(isPresented: $showingAddSheet) {
-            VStack(spacing: 20) {
-                Text("Add New \(selectedTab.dropLast())").font(.headline)
-                Form {
-                    if selectedTab == "Sites" {
-                        TextField("Site Name", text: $newName)
-                        TextField("Address/Description", text: $newDesc)
-                    } else if selectedTab == "Devices" {
-                        TextField("Hostname", text: $newName)
-                        Picker("Type", selection: $newType) {
-                            ForEach(deviceTypes, id: \.self) { Text($0) }
-                        }
-                        Picker("Site", selection: $selectedSiteID) {
-                            Text("No Site").tag(nil as PersistentIdentifier?)
-                            ForEach(allSites) { site in Text(site.name).tag(site.id as PersistentIdentifier?) }
-                        }
-                    } else {
-                        TextField("CIDR", text: $newName)
-                        TextField("Description", text: $newDesc)
-                        Picker("Site", selection: $selectedSiteID) {
-                            Text("Global").tag(nil as PersistentIdentifier?)
-                            ForEach(allSites) { site in Text(site.name).tag(site.id as PersistentIdentifier?) }
-                        }
-                    }
-                }
-                HStack {
-                    Button("Cancel") { showingAddSheet = false }
-                    Spacer()
-                    Button("Save") { saveAction() }
-                        .buttonStyle(.borderedProminent).disabled(newName.isEmpty)
-                }
-            }.padding().frame(width: 320)
-        }
-    }
-    
-    private func resetForms() {
-        newName = ""
-        newDesc = ""
-        selectedSiteID = nil
-    }
-    
-    private func saveAction() {
-        switch selectedTab {
-        case "Sites":
-            let site = NetBoxSite(name: newName, siteDescription: newDesc)
-            modelContext.insert(site)
-        case "Devices":
-            let site = allSites.first(where: { $0.id == selectedSiteID })
-            modelContext.insert(NetBoxDevice(name: newName, deviceType: newType, site: site))
-        case "IPAM":
-            let site = allSites.first(where: { $0.id == selectedSiteID })
-            modelContext.insert(NetBoxPrefix(cidr: newName, prefixDescription: newDesc, site: site))
-        default: break
-        }
-        try? modelContext.save()
-        triggerToast("Successfully Saved!")
-        showingAddSheet = false
-    }
-    
-    private func triggerToast(_ msg: String) {
-        toastMessage = msg
-        withAnimation { showToast = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { withAnimation { showToast = false } }
-    }
-}
-
-// MARK: - Navigation Wrappers with EDIT SITES Logic
-struct NetBoxSitesView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: \NetBoxSite.name) private var sites: [NetBoxSite]
-    @State private var selectedSiteID: PersistentIdentifier?
-    
-    var body: some View {
-        NavigationSplitView {
-            List(selection: $selectedSiteID) {
-                ForEach(sites) { site in
-                    NavigationLink(value: site.id) {
-                        Label(site.name, systemImage: "building.2.fill")
-                    }
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            modelContext.delete(site)
-                            try? modelContext.save()
-                        } label: { Label("Delete Site", systemImage: "trash") }
-                    }
-                }
-            }
-            .navigationTitle("Global Sites")
-            .listStyle(.sidebar)
-        } detail: {
-            if let id = selectedSiteID, let site = sites.first(where: { $0.id == id }) {
-                SiteDetailView(site: site)
-            } else {
-                ContentUnavailableView("Nodes Documentation", systemImage: "map", description: Text("Manage PoP sites and hierarchy."))
-            }
-        }
-    }
-}
-
-struct NetBoxAllDevicesView: View {
-    @Environment(\.modelContext) private var modelContext
-    let devices: [NetBoxDevice]
-    
-    var body: some View {
-        List {
-            ForEach(devices) { device in
-                HStack {
-                    Label(device.name, systemImage: "cpu.fill")
-                    Spacer()
-                    Text(device.deviceType).font(.caption2).padding(4).background(Color.blue.opacity(0.1)).cornerRadius(4)
-                }
-                .contextMenu {
-                    Button(role: .destructive) {
-                        modelContext.delete(device)
-                        try? modelContext.save()
-                    } label: { Label("Delete Hardware", systemImage: "trash") }
-                }
-            }
-        }
-        .listStyle(.inset(alternatesRowBackgrounds: true))
-    }
-}
-
-struct NetBoxIPAMView: View {
-    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \NetBoxVLANGroup.name) private var allVLANGroups: [NetBoxVLANGroup]
+    @Query(sort: \NetBoxVLAN.vid) private var allVLANs: [NetBoxVLAN]
     @Query(sort: \NetBoxPrefix.cidr) private var allPrefixes: [NetBoxPrefix]
-    @State private var selectedPrefixID: PersistentIdentifier?
-    let allDevices: [NetBoxDevice]
+    
+    enum NetBoxNavigationItem: Hashable {
+        case allSites, allDevices, ipam, vlans
+        case site(PersistentIdentifier), vlan(PersistentIdentifier), prefix(PersistentIdentifier), group(PersistentIdentifier), device(PersistentIdentifier)
+    }
     
     var body: some View {
         NavigationSplitView {
-            List(selection: $selectedPrefixID) {
-                ForEach(allPrefixes) { prefix in
-                    NavigationLink(value: prefix.id) {
-                        VStack(alignment: .leading) {
-                            Text(prefix.cidr).font(.system(.body, design: .monospaced, weight: .bold))
-                            Text(prefix.site?.name ?? "Global Space").font(.caption2).foregroundStyle(.secondary)
-                        }
-                    }
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            modelContext.delete(prefix)
-                            try? modelContext.save()
-                        } label: { Label("Deallocate Prefix", systemImage: "trash") }
-                    }
+            List(selection: $navigationSelection) {
+                Section("Infrastructure") {
+                    NavigationLink(value: NetBoxNavigationItem.allSites) { Label("All Sites", systemImage: "building.2.fill") }
+                    NavigationLink(value: NetBoxNavigationItem.allDevices) { Label("Hardware List", systemImage: "cpu.fill") }
+                }
+                Section("IPAM & L2") {
+                    NavigationLink(value: NetBoxNavigationItem.ipam) { Label("Prefixes (L3)", systemImage: "network") }
+                    NavigationLink(value: NetBoxNavigationItem.vlans) { Label("VLAN Rollout", systemImage: "point.3.connected.trianglepath.dotted") }
+                }
+                Section("Site Access") {
+                    ForEach(allSites) { s in NavigationLink(value: NetBoxNavigationItem.site(s.id)) { Text(s.name) } }
+                }
+                Section("VLAN Contexts") {
+                    ForEach(allVLANGroups) { g in NavigationLink(value: NetBoxNavigationItem.group(g.id)) { Text(g.name) } }
                 }
             }
-            .navigationTitle("Global IPAM")
-            .listStyle(.sidebar)
+            .listStyle(.sidebar).navigationTitle("NetBox")
+            .toolbar {
+                ToolbarItem {
+                    Menu {
+                        Button("New Site") { showingAddSite = true }; Button("New Device") { showingAddDevice = true }; Button("New Prefix") { showingAddPrefix = true }
+                        Divider(); Button("New VLAN Group") { showingAddVLANGroup = true }; Button("New VLAN") { showingAddVLAN = true }
+                    } label: { Label("Add Resource", systemImage: "plus") }
+                }
+            }
         } detail: {
-            if let id = selectedPrefixID, let prefix = allPrefixes.first(where: { $0.id == id }) {
-                PrefixDetailView(prefix: prefix, devicesInSite: prefix.site?.devices ?? allDevices)
-            } else {
-                ContentUnavailableView("Allocated Space", systemImage: "network", description: Text("Manage your subnet documentation."))
+            ZStack(alignment: .bottom) {
+                Group {
+                    if let selection = navigationSelection {
+                        switch selection {
+                        case .allSites: NetBoxSitesDashboard(selection: $navigationSelection)
+                        case .allDevices: NetBoxAllDevicesView(devices: allDevices, selection: $navigationSelection)
+                        case .ipam: NetBoxIPAMDashboard(selection: $navigationSelection)
+                        case .vlans: NetBoxVLANsDashboard(allVLANs: allVLANs, selection: $navigationSelection)
+                        case .site(let id): if let s = allSites.first(where: { $0.id == id }) { SiteDetailView(site: s) }
+                        case .vlan(let id): if let v = allVLANs.first(where: { $0.id == id }) { VLANDetailView(vlan: v, allDevices: allDevices) }
+                        case .prefix(let id): if let p = allPrefixes.first(where: { $0.id == id }) { PrefixDetailView(prefix: p, devicesInSite: p.site?.devices ?? allDevices) }
+                        case .group(let id): if let g = allVLANGroups.first(where: { $0.id == id }) { VLANGroupDetailView(group: g) }
+                        case .device(let id): if let d = allDevices.first(where: { $0.id == id }) { DeviceDetailView(device: d) }
+                        }
+                    } else { ContentUnavailableView("Resource Audit", systemImage: "square.grid.2x2", description: Text("Manage your network assets.")) }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(NSColor.windowBackgroundColor))
             }
         }
+        .sheet(isPresented: $showingAddSite) { AddSiteSheet(isPresented: $showingAddSite) }
+        .sheet(isPresented: $showingAddDevice) { AddDeviceSheet(isPresented: $showingAddDevice) }
+        .sheet(isPresented: $showingAddPrefix) { AddPrefixSheet(isPresented: $showingAddPrefix) }
+        .sheet(isPresented: $showingAddVLANGroup) { AddVLANGroupSheet(isPresented: $showingAddVLANGroup) }
+        .sheet(isPresented: $showingAddVLAN) { AddVLANSheet(isPresented: $showingAddVLAN) }
     }
 }

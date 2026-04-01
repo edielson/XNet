@@ -18,15 +18,17 @@
 
 ### 📐 Planning & Infrastructure (NetBox)
 - **NetBox Dashboard (DCIM & IPAM)**: 
-  - **Site Management**: Physical PoP and node organization.
+  - **Site Management**: Physical PoP and node organization with deep inventory viewing.
   - **Hardware Inventory**: Integrated DCIM for routers, switches, and servers.
-  - **IPAM (Global Subnets)**: Hierarchical IPv4 IP management with prefix allocation.
+  - **IPAM (Global Subnets)**: Hierarchical IPv4 IP management with high-performance prefix allocation.
+  - **VLAN Availability Map**: Automatic mathematical calculation of free ID ranges (VLAN Rollout) mirroring professional NetBox experience.
   - **Multi-IP Support**: Link multiple IP addresses (WAN, LAN, Loopback) to a single device.
   - **Searchable Inventory**: High-performance device selector for rapid IP assignment.
-  - **SwiftData Persistence**: Fully persistent local database with automatic synchronization.
+  - **Interactive Navigation**: Cascading selection from sites to devices and IP prefixes.
+  - **SwiftData Persistence**: Fully persistent local database with high-integrity relationships.
 
 - **Subnet Calculator (The Planner)**: 
-  - Advanced IPv4 bitwise calculations.
+  - Advanced IPv4 bitwise calculations with **64-bit Overflow Protection**.
   - Real-time updates for Network, Broadcast, Mask, and Wildcard info.
   - **Binary Visualizer**: See the exact bit-level split between network and host portions.
 
@@ -46,7 +48,8 @@ XNet› follows a **Feature-Based Modular Architecture**, ensuring high scalabil
 
 - **App**: Core application lifecycle and routing logic.
 - **Core**: Shared models, common diagnostic types, and navigation definitions.
-- **Features**: Completely isolated modules for each tool (Ping, Subnet Calculator, Terminal, etc.), containing their own Views and Services.
+- **Features**: Completely isolated modules for each tool (Ping, NetBox, Terminal, etc.), containing their own Views, Components, and Services.
+- **Componentized UI**: The NetBox module uses a decoupled view architecture (Dashboards, Detail Views, and Specialized Sheets) for maximum performance and Xcode stability.
 
 ---
 
@@ -70,7 +73,7 @@ XNet› is designed for distribution outside the Mac App Store to allow for low-
 
 ## 🏗️ Tech Stack
 - **Languages**: Swift 6.0
-- **Frameworks**: SwiftUI (Observation API), Network.framework, SwiftData (planned).
+- **Frameworks**: SwiftUI (Observation API), Network.framework, SwiftData.
 - **APIs**: POSIX (termios, sockets) for low-level network and serial access.
 
 ---
