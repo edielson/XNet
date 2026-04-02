@@ -1,0 +1,52 @@
+# Xcode
+#
+# gitignore contributors: switch to the 1-indexed version to get the latest version.
+
+# Build artifacts
+build/
+DerivedData/
+
+# Personal settings
+xcuserdata/
+
+# Architecture and platform-specific
+*.swp
+*.lock
+.DS_Store
+
+# Logs and databases
+*.log
+*.txt
+*.db
+!README.md
+
+# Package Manager
+.swiftpm/
+.conan/
+.vcpkg/
+
+# User-specific Xcode settings
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserstate
+
+# Carthage and Swift Package Manager (unless we specifically want to commit packages)
+# Carthage/
+# .build/
+
+# Testing
+*.gcda
+*.gcno
+
+# Backup files
+*~
+*.bak
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+# End of file
