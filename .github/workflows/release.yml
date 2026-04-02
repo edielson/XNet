@@ -21,19 +21,21 @@ jobs:
         with:
           xcode-version: '16.0'
 
-      - name: Build App (Release)
+      - name: Build App (Ad-Hoc Unsigned)
         run: |
           xcodebuild -scheme "XNet›" \
                      -project "XNet›.xcodeproj" \
                      -configuration Release \
                      -destination 'platform=macOS' \
-                     build
+                     CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+                     clean build \
+                     SYMROOT=$PWD/build
 
       - name: Create DMG
         run: |
           mkdir -p dist
-          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "XNet›.app" -type d | grep Release | head -n 1)
-          cp -R "$APP_PATH" dist/
+          # Copia o App direto da pasta de build controlada que acabamos de definir
+          cp -R "build/Release/XNet›.app" dist/
           
           # Create DMG using hdiutil
           hdiutil create -volname "XNet›" \

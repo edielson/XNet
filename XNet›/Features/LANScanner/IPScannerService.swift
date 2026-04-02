@@ -3,10 +3,6 @@ import Network
 import Darwin
 
 class IPScannerService {
-    private class CancelFlag {
-        var isCancelled = false
-    }
-
     struct ICMPHeader {
         var type: UInt8
         var code: UInt8
@@ -14,185 +10,224 @@ class IPScannerService {
         var identifier: UInt16
         var sequence: UInt16
     }
-
+    
     func scan(subnet: String) -> AsyncStream<ScannedDevice> {
         let targets = IPScannerService.parseInput(subnet)
         
         return AsyncStream { continuation in
-            let queue = DispatchQueue(label: "com.xnet.scan", qos: .utility, attributes: .concurrent)
-            let semaphore = DispatchSemaphore(value: 50)
-            let group = DispatchGroup()
-            let stopSignal = CancelFlag()
+            let sockID = Darwin.socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
+            if sockID < 0 {
+                continuation.finish()
+                return
+            }
+            
+            var localAddr = sockaddr_in()
+            localAddr.sin_family = sa_family_t(AF_INET)
+            localAddr.sin_addr.s_addr = INADDR_ANY.bigEndian
+            localAddr.sin_port = 0
+            
+            _ = withUnsafePointer(to: &localAddr) {
+                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    Darwin.bind(sockID, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                }
+            }
+            
+            var nameAddr = sockaddr_in()
+            var nameLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+            _ = withUnsafeMutablePointer(to: &nameAddr) {
+                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    Darwin.getsockname(sockID, $0, &nameLen)
+                }
+            }
+            let identifier = nameAddr.sin_port
+            
+            var rcvBuf: Int32 = 1024 * 1024 // 1MB Buffer
+            Darwin.setsockopt(sockID, SOL_SOCKET, SO_RCVBUF, &rcvBuf, socklen_t(MemoryLayout<Int32>.size))
+            
+            // Usamos timeout curto no receptor
+            var timeout = timeval(tv_sec: 0, tv_usec: 10000)
+            Darwin.setsockopt(sockID, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+            
+            let cancelFlag = CancelFlag()
+            
+            let listenQueue = DispatchQueue(label: "com.xnet.scanner.listen", qos: .userInteractive)
+            listenQueue.async {
+                var buffer = [UInt8](repeating: 0, count: 1024)
+                var scannedIPs = Set<String>()
+                scannedIPs.reserveCapacity(256)
+                
+                while !cancelFlag.isCancelled {
+                    var fromAddr = sockaddr_in()
+                    var fromLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+                    
+                    let recvSize = withUnsafeMutablePointer(to: &fromAddr) { ptr in
+                        ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
+                            Darwin.recvfrom(sockID, &buffer, buffer.count, 0, saPtr, &fromLen)
+                        }
+                    }
+                    
+                    guard recvSize >= 8 else { continue }
+                    
+                    var ipBuffer = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+                    inet_ntop(AF_INET, &fromAddr.sin_addr, &ipBuffer, socklen_t(INET_ADDRSTRLEN))
+                    let responseIP = String(cString: ipBuffer)
+                    
+                    if scannedIPs.contains(responseIP) { continue }
+                    
+                    var icmpOffset = 0
+                    if (buffer[0] & 0xF0) == 0x40 { icmpOffset = Int((buffer[0] & 0x0F) * 4) }
+                    
+                    if recvSize >= icmpOffset + 8 {
+                        let type = buffer[icmpOffset]
+                        let respIdent = UInt16(buffer[icmpOffset + 4]) << 8 | UInt16(buffer[icmpOffset + 5])
+                        
+                        if type == 0 && respIdent == identifier.bigEndian {
+                            scannedIPs.insert(responseIP)
+                            
+                            // DISPATCH ASSÍNCRONO PARA NÃO TRAVAR O SOCKET!
+                            Task {
+                                let mac = IPScannerService.getMACAddress(for: responseIP)
+                                let vendor = await MACVendorService.shared.lookup(mac: mac)
+                                continuation.yield(ScannedDevice(ip: responseIP, mac: mac, hostname: "Unknown", vendor: vendor))
+                            }
+                        }
+                    } 
+                }
+            }
             
             Task.detached {
-                for target in targets {
-                    if stopSignal.isCancelled { break }
+                // Fazer disparo dos pings UDP encapsulados em ICMP
+                for (index, target) in targets.enumerated() {
+                    if cancelFlag.isCancelled { break }
                     
-                    semaphore.wait()
-                    group.enter()
+                    var destAddr = sockaddr_in()
+                    destAddr.sin_family = sa_family_t(AF_INET)
+                    destAddr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+                    inet_pton(AF_INET, target, &destAddr.sin_addr)
                     
-                    Task {
-                        defer {
-                            group.leave()
-                            semaphore.signal()
-                        }
-                        
-                        if let sockID = IPScannerService.createSocket() {
-                            defer { Darwin.close(sockID) }
-                            if IPScannerService.pingOnceSync(ip: target, socket: sockID) {
-                                let mac = IPScannerService.getMACAddress(for: target)
-                                let vendor = mac == "N/A" ? "N/A" : await MACVendorService.lookupExtended(mac: mac)
-                                continuation.yield(ScannedDevice(ip: target, mac: mac, hostname: "Unknown", vendor: vendor))
+                    var header = ICMPHeader(
+                        type: 8, code: 0, checksum: 0,
+                        identifier: identifier, 
+                        sequence: UInt16(index + 1).bigEndian
+                    )
+                    
+                    let payloadData = "XNet-V3-Engine".data(using: .utf8)!
+                    var packet = Data(count: MemoryLayout<ICMPHeader>.size + payloadData.count)
+                    packet.withUnsafeMutableBytes { bytes in
+                        bytes.bindMemory(to: ICMPHeader.self).baseAddress!.pointee = header
+                    }
+                    packet.replaceSubrange(MemoryLayout<ICMPHeader>.size..<packet.count, with: payloadData)
+                    
+                    let cksum = IPScannerService.calculateChecksum(data: packet)
+                    packet.withUnsafeMutableBytes { bytes in
+                        bytes.bindMemory(to: ICMPHeader.self).baseAddress!.pointee.checksum = cksum
+                    }
+                    
+                    _ = withUnsafePointer(to: &destAddr) { ptr in
+                        ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
+                            packet.withUnsafeBytes { pktPtr in
+                                Darwin.sendto(sockID, pktPtr.baseAddress, packet.count, 0, saPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
                             }
                         }
                     }
+                    
+                    try? await Task.sleep(nanoseconds: 2_000_000) // 2ms para aliviar buffer kernel
                 }
                 
-                group.wait()
+                try? await Task.sleep(nanoseconds: 2_500_000_000) // Espera 2.5s para os atrasados
+                
+                cancelFlag.isCancelled = true
+                Darwin.close(sockID)
                 continuation.finish()
             }
             
             continuation.onTermination = { @Sendable _ in
-                stopSignal.isCancelled = true
+                cancelFlag.isCancelled = true
+                Darwin.close(sockID)
             }
         }
     }
     
-    private static func createSocket() -> Int32? {
-        let sockID = Darwin.socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
-        if sockID < 0 { return nil }
-        
-        var timeout = timeval(tv_sec: 1, tv_usec: 0)
-        Darwin.setsockopt(sockID, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
-        return sockID
-    }
-    
-    private static func pingOnceSync(ip: String, socket: Int32) -> Bool {
-        var header = ICMPHeader(
-            type: 8, code: 0, checksum: 0, 
-            identifier: UInt16.random(in: 0...65535).bigEndian, 
-            sequence: UInt16(1).bigEndian
-        )
-        
-        let payload = "PingPayload32BytesStandardCheck!".data(using: .utf8)!
-        var packet = Data(bytes: &header, count: MemoryLayout<ICMPHeader>.size)
-        packet.append(payload)
-        
-        header.checksum = calculateChecksum(data: packet).bigEndian
-        packet.replaceSubrange(0..<MemoryLayout<ICMPHeader>.size, with: Data(bytes: &header, count: MemoryLayout<ICMPHeader>.size))
-        
-        var addr = sockaddr_in()
-        addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-        inet_pton(AF_INET, ip, &addr.sin_addr)
-        
-        let sent = withUnsafePointer(to: &addr) {
-            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                Darwin.sendto(socket, (packet as NSData).bytes, packet.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
-            }
-        }
-        
-        if sent < 0 { return false }
-        
-        var buffer = [UInt8](repeating: 0, count: 1024)
-        let received = Darwin.recv(socket, &buffer, buffer.count, 0)
-        
-        if received >= 8 {
-            // 1. Caso comum do macOS (SOCK_DGRAM): ICMP direto no início buffer[0]
-            if buffer[0] == 0 && buffer[1] == 0 {
-                return true
-            }
-            
-            // 2. Caso com IP Header presente (20 bytes de offset)
-            if received >= 28 && buffer[20] == 0 && buffer[21] == 0 {
-                return true
-            }
-        }
-        return false
-    }
-    
-    private static func calculateChecksum(data: Data) -> UInt16 {
+    nonisolated private static func calculateChecksum(data: Data) -> UInt16 {
         let count = data.count
         var checksum: UInt32 = 0
+        var i = 0
+        
         data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
-            let ptr = bytes.bindMemory(to: UInt16.self)
-            for i in 0..<count/2 {
-                checksum += UInt32(ptr[i])
+            guard let ptr = bytes.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+            
+            while i < count - 1 {
+                let word = UInt32(ptr[i]) << 8 | UInt32(ptr[i+1])
+                checksum += word
+                i += 2
             }
-            if count % 2 == 1 {
-                checksum += UInt32(data[count - 1])
+            
+            if i == count - 1 {
+                checksum += UInt32(ptr[i]) << 8
             }
         }
+        
         while (checksum >> 16) != 0 {
             checksum = (checksum & 0xFFFF) + (checksum >> 16)
         }
-        return UInt16(truncatingIfNeeded: ~checksum)
+        
+        return UInt16(truncatingIfNeeded: ~checksum).bigEndian
     }
     
-    private static func getMACAddress(for ip: String) -> String {
+    nonisolated private static func getMACAddress(for ip: String) -> String {
         var mib: [Int32] = [CTL_NET, PF_ROUTE, 0, AF_INET, NET_RT_FLAGS, RTF_LLINFO]
         var len: Int = 0
         if sysctl(&mib, UInt32(mib.count), nil, &len, nil, 0) < 0 { return "N/A" }
+        if len <= 0 { return "N/A" }
         
-        var data = Data(count: len)
-        if data.withUnsafeMutableBytes({ sysctl(&mib, UInt32(mib.count), $0.baseAddress, &len, nil, 0) }) < 0 {
-            return "N/A"
-        }
+        var buffer = [UInt8](repeating: 0, count: len)
+        if sysctl(&mib, UInt32(mib.count), &buffer, &len, nil, 0) < 0 { return "N/A" }
         
         var offset = 0
-        while offset < data.count {
-            let hdr = data.withUnsafeBytes { $0.load(fromByteOffset: offset, as: rt_msghdr.self) }
-            let rt_m_size = Int(hdr.rtm_msglen)
+        while offset < len {
+            let msgPointer = buffer.withUnsafeBytes { $0.baseAddress!.advanced(by: offset) }
+            let rtm = msgPointer.assumingMemoryBound(to: rt_msghdr.self).pointee
             
-            // Advance offset manually based on rtm_msglen
-            let messageEnd = offset + rt_m_size
+            if offset + Int(rtm.rtm_msglen) > len { break }
             
-            // Find sockaddrs after rt_msghdr
-            // The addresses follow immediately after the rt_msghdr
-            // Struct is: [rt_msghdr][sockaddr_in (dst)][sockaddr_dl (gate)]...
+            let rtmSize = MemoryLayout<rt_msghdr>.size
+            let sinPointer = msgPointer.advanced(by: rtmSize).assumingMemoryBound(to: sockaddr_in.self)
             
-            var currentPos = offset + MemoryLayout<rt_msghdr>.size
-            
-            // First is RTA_DST (Destination IP)
-            let dst_sin = data.withUnsafeBytes { $0.load(fromByteOffset: currentPos, as: sockaddr_in.self) }
-            var buffer = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
-            var sin_addr = dst_sin.sin_addr
-            inet_ntop(AF_INET, &sin_addr, &buffer, socklen_t(INET_ADDRSTRLEN))
-            let dstIP = String(cString: buffer)
+            var ipBuffer = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+            var sin_addr = sinPointer.pointee.sin_addr
+            inet_ntop(AF_INET, &sin_addr, &ipBuffer, socklen_t(INET_ADDRSTRLEN))
+            let dstIP = String(cString: ipBuffer)
             
             if dstIP == ip {
-                // Second is RTA_GATEWAY (Should be sockaddr_dl for local ARP entries)
-                // We need to skip the first sockaddr (destination ip)
-                // Sizes are aligned. sockaddr_in is typically 16 bytes.
-                let sin_size = Int(dst_sin.sin_len)
-                currentPos += (sin_size > 0 ? ((sin_size - 1) / 4 + 1) * 4 : 4) // word alignment
+                // O sockaddr_dl (link address) vem logo após o sockaddr_in
+                var sinLen = Int(sinPointer.pointee.sin_len)
+                // Alinhamento de memória (tipicamente 4 ou 8 bytes no Darwin)
+                sinLen = (sinLen > 0) ? ((sinLen - 1) / 4 + 1) * 4 : 4
                 
-                let gateway_sdl = data.withUnsafeBytes { $0.load(fromByteOffset: currentPos, as: sockaddr_dl.self) }
-                if gateway_sdl.sdl_family == UInt8(AF_LINK) && gateway_sdl.sdl_alen > 0 {
-                    let macPtr = data.withUnsafeBytes { bytes -> UnsafePointer<UInt8> in
-                        let sdlPtr = bytes.baseAddress!.advanced(by: currentPos).assumingMemoryBound(to: sockaddr_dl.self)
-                        // MAC data starts at sdl_data + sdl_nlen
-                        let dataPtr = UnsafeRawPointer(sdlPtr).advanced(by: MemoryLayout<sockaddr_dl>.offset(of: \sockaddr_dl.sdl_data)!)
-                        return dataPtr.advanced(by: Int(gateway_sdl.sdl_nlen)).assumingMemoryBound(to: UInt8.self)
+                let sdlPointer = msgPointer.advanced(by: rtmSize + sinLen).assumingMemoryBound(to: sockaddr_dl.self)
+                let sdl = sdlPointer.pointee
+                
+                if sdl.sdl_family == UInt8(AF_LINK) && sdl.sdl_alen > 0 {
+                    let macPtr = sdlPointer.withMemoryRebound(to: UInt8.self, capacity: 1) { ptr -> UnsafePointer<UInt8> in
+                        return ptr.advanced(by: MemoryLayout<sockaddr_dl>.offset(of: \sockaddr_dl.sdl_data)! + Int(sdl.sdl_nlen))
                     }
                     
-                    let macChars = (0..<Int(gateway_sdl.sdl_alen)).map { String(format: "%02X", macPtr[$0]) }
+                    let macChars = (0..<Int(sdl.sdl_alen)).map { String(format: "%02X", macPtr[$0]) }
                     return macChars.joined(separator: ":")
                 }
             }
-            
-            offset = messageEnd
+            offset += Int(rtm.rtm_msglen)
         }
-        
         return "N/A"
     }
+
     
-    private static func getHostname(for ip: String) -> String {
+    nonisolated private static func getHostname(for ip: String) -> String {
         return "Unknown"
     }
     
     
-    private static func parseInput(_ input: String) -> [String] {
+    nonisolated static func parseInput(_ input: String) -> [String] {
         var targets: [String] = []
         let parts = input.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         
@@ -220,7 +255,7 @@ class IPScannerService {
         return targets
     }
     
-    private static func parseCIDR(_ cidr: String) -> [String] {
+    nonisolated private static func parseCIDR(_ cidr: String) -> [String] {
         let parts = cidr.components(separatedBy: "/")
         guard parts.count == 2, let maskBits = Int(parts[1]), maskBits >= 0, maskBits <= 32 else { return [] }
         guard let baseInt = ipToUint32(parts[0]) else { return [] }
@@ -239,7 +274,7 @@ class IPScannerService {
         return ips
     }
     
-    private static func parseRange(_ range: String) -> [String] {
+    nonisolated private static func parseRange(_ range: String) -> [String] {
         let parts = range.components(separatedBy: "-")
         guard parts.count == 2, let startInt = ipToUint32(parts[0]), let endInt = ipToUint32(parts[1]) else { return [] }
         
@@ -253,7 +288,7 @@ class IPScannerService {
         return ips
     }
     
-    private static func ipToUint32(_ ip: String) -> UInt32? {
+    nonisolated private static func ipToUint32(_ ip: String) -> UInt32? {
         var addr = in_addr()
         if inet_pton(AF_INET, ip, &addr) == 1 {
             return UInt32(bigEndian: addr.s_addr)
@@ -261,7 +296,7 @@ class IPScannerService {
         return nil
     }
     
-    private static func uint32ToIP(_ val: UInt32) -> String {
+    nonisolated private static func uint32ToIP(_ val: UInt32) -> String {
         var addr = in_addr(s_addr: val.bigEndian)
         var buffer = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
         inet_ntop(AF_INET, &addr, &buffer, socklen_t(INET_ADDRSTRLEN))

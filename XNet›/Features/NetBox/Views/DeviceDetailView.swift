@@ -24,6 +24,15 @@ struct DeviceDetailView: View {
                       }
                  }
             }
+
+            if !device.notes.isEmpty {
+                Section("Diagnostic & Config Notes") {
+                    Text(device.notes)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 4)
+                }
+            }
             
             Section("Audit Actions") {
                 Button("Edit Hostname") { editName = device.name; isEditing = true }.foregroundStyle(.blue)

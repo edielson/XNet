@@ -23,14 +23,16 @@ final class NetBoxDevice {
     var name: String
     var deviceType: String
     var assetTag: String
+    var notes: String
     var site: NetBoxSite?
     @Relationship(deleteRule: .nullify, inverse: \NetBoxIP.device)
     var assignedIPs: [NetBoxIP] = []
     
-    init(name: String, deviceType: String = "Server", assetTag: String = "", site: NetBoxSite? = nil) {
+    init(name: String, deviceType: String = "Server", assetTag: String = "", notes: String = "", site: NetBoxSite? = nil) {
         self.name = name
         self.deviceType = deviceType
         self.assetTag = assetTag
+        self.notes = notes
         self.site = site
     }
 }

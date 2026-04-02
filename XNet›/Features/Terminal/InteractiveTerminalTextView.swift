@@ -14,16 +14,22 @@ struct InteractiveTerminalTextView: NSViewRepresentable {
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = .black
         
         let textView = CustomTerminalTextView()
         textView.autoresizingMask = [.width, .height]
         textView.backgroundColor = .black
-        textView.textColor = .green
-        textView.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        textView.drawsBackground = true
+        textView.textColor = NSColor.white.withAlphaComponent(0.9)
+        textView.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
         textView.isRichText = false
-        textView.isEditable = true // Must be editable to receive focus
+        textView.isEditable = true
         textView.isSelectable = true
-        textView.insertionPointColor = .green
+        textView.insertionPointColor = .white
+        textView.textContainerInset = NSSize(width: 15, height: 15) // Padding elegante
+        textView.focusRingType = .none // Remove borda azul ao clicar
         
         textView.onInput = { input in
             self.onInput(input)

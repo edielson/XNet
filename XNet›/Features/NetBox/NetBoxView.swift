@@ -3,87 +3,120 @@ import SwiftData
 
 struct NetBoxView: View {
     @Environment(\.modelContext) private var modelContext
-    @State private var navigationSelection: NetBoxNavigationItem? = .allSites
-    
-    // UI Feedback
-    @State private var toastMessage = ""
-    @State private var showToast = false
-    @State private var showingAddSite = false
-    @State private var showingAddPrefix = false
-    @State private var showingAddDevice = false
-    @State private var showingAddVLANGroup = false
-    @State private var showingAddVLAN = false
-    
-    @Query(sort: \NetBoxSite.name) private var allSites: [NetBoxSite]
-    @Query(sort: \NetBoxDevice.name) private var allDevices: [NetBoxDevice]
-    @Query(sort: \NetBoxVLANGroup.name) private var allVLANGroups: [NetBoxVLANGroup]
-    @Query(sort: \NetBoxVLAN.vid) private var allVLANs: [NetBoxVLAN]
-    @Query(sort: \NetBoxPrefix.cidr) private var allPrefixes: [NetBoxPrefix]
     
     enum NetBoxNavigationItem: Hashable {
         case allSites, allDevices, ipam, vlans
         case site(PersistentIdentifier), vlan(PersistentIdentifier), prefix(PersistentIdentifier), group(PersistentIdentifier), device(PersistentIdentifier)
     }
     
+    @Query(sort: \NetBoxSite.name) private var allSites: [NetBoxSite]
+    @Query(sort: \NetBoxDevice.name) private var allDevices: [NetBoxDevice]
+    @Query(sort: \NetBoxPrefix.cidr) private var allPrefixes: [NetBoxPrefix]
+    
     var body: some View {
-        NavigationSplitView {
-            List(selection: $navigationSelection) {
-                Section("Infrastructure") {
-                    NavigationLink(value: NetBoxNavigationItem.allSites) { Label("All Sites", systemImage: "building.2.fill") }
-                    NavigationLink(value: NetBoxNavigationItem.allDevices) { Label("Hardware List", systemImage: "cpu.fill") }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 32) {
+                // Dashboard Header
+                HeaderView(title: "NetBox Audit", subtitle: "Infrastructure and IPAM Management")
+                
+                // Asset Overview Grid
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 280))], spacing: 20) {
+                    AssetCard(title: "Deployment Sites", count: allSites.count, icon: "building.2.fill", color: .purple)
+                    AssetCard(title: "Total Devices", count: allDevices.count, icon: "cpu.fill", color: .blue)
+                    AssetCard(title: "IP Prefixes", count: allPrefixes.count, icon: "network", color: .green)
                 }
-                Section("IPAM & L2") {
-                    NavigationLink(value: NetBoxNavigationItem.ipam) { Label("Prefixes (L3)", systemImage: "network") }
-                    NavigationLink(value: NetBoxNavigationItem.vlans) { Label("VLAN Rollout", systemImage: "point.3.connected.trianglepath.dotted") }
-                }
-                Section("Site Access") {
-                    ForEach(allSites) { s in NavigationLink(value: NetBoxNavigationItem.site(s.id)) { Text(s.name) } }
-                }
-                Section("VLAN Contexts") {
-                    ForEach(allVLANGroups) { g in 
-                        NavigationLink(value: NetBoxNavigationItem.group(g.id)) { Text(g.name) }
-                    }
-                    .onDelete { indexSet in
-                        for index in indexSet {
-                            modelContext.delete(allVLANGroups[index])
-                        }
-                        try? modelContext.save()
+                
+                // Detailed Breakdown Section
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Infrastructure Health")
+                        .font(.title3)
+                        .bold()
+                    
+                    HStack(spacing: 20) {
+                        QuickMetric(title: "Active VLANs", value: "14", trend: "+2 this week")
+                        QuickMetric(title: "Usage (L3)", value: "62%", trend: "Stable")
+                        QuickMetric(title: "Rack Units", value: "24U Used", trend: "4U Free")
                     }
                 }
             }
-            .listStyle(.sidebar).navigationTitle("NetBox")
-            .toolbar {
-                ToolbarItem {
-                    Menu {
-                        Button("New Site") { showingAddSite = true }; Button("New Device") { showingAddDevice = true }; Button("New Prefix") { showingAddPrefix = true }
-                        Divider(); Button("New VLAN Group") { showingAddVLANGroup = true }; Button("New VLAN") { showingAddVLAN = true }
-                    } label: { Label("Add Resource", systemImage: "plus") }
-                }
+            .padding(32)
+        }
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+}
+
+struct HeaderView: View {
+    let title: String
+    let subtitle: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 34, weight: .bold))
+            Text(subtitle)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct AssetCard: View {
+    let title: String
+    let count: Int
+    let icon: String
+    let color: Color
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.title2)
+                    .foregroundStyle(color)
+                Spacer()
+                Image(systemName: "arrow.up.right.circle.fill")
+                    .foregroundStyle(.secondary.opacity(0.3))
             }
-        } detail: {
-            ZStack(alignment: .bottom) {
-                Group {
-                    if let selection = navigationSelection {
-                        switch selection {
-                        case .allSites: NetBoxSitesDashboard(selection: $navigationSelection)
-                        case .allDevices: NetBoxAllDevicesView(devices: allDevices, selection: $navigationSelection)
-                        case .ipam: NetBoxIPAMDashboard(selection: $navigationSelection)
-                        case .vlans: NetBoxVLANsDashboard(allVLANs: allVLANs, selection: $navigationSelection)
-                        case .site(let id): if let s = allSites.first(where: { $0.id == id }) { SiteDetailView(site: s) }
-                        case .vlan(let id): if let v = allVLANs.first(where: { $0.id == id }) { VLANDetailView(vlan: v, allDevices: allDevices) }
-                        case .prefix(let id): if let p = allPrefixes.first(where: { $0.id == id }) { PrefixDetailView(prefix: p, devicesInSite: p.site?.devices ?? allDevices) }
-                        case .group(let id): if let g = allVLANGroups.first(where: { $0.id == id }) { VLANGroupDetailView(group: g) }
-                        case .device(let id): if let d = allDevices.first(where: { $0.id == id }) { DeviceDetailView(device: d) }
-                        }
-                    } else { ContentUnavailableView("Resource Audit", systemImage: "square.grid.2x2", description: Text("Manage your network assets.")) }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(NSColor.windowBackgroundColor))
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(count)")
+                    .font(.system(size: 28, weight: .bold))
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
-        .sheet(isPresented: $showingAddSite) { AddSiteSheet(isPresented: $showingAddSite) }
-        .sheet(isPresented: $showingAddDevice) { AddDeviceSheet(isPresented: $showingAddDevice) }
-        .sheet(isPresented: $showingAddPrefix) { AddPrefixSheet(isPresented: $showingAddPrefix) }
-        .sheet(isPresented: $showingAddVLANGroup) { AddVLANGroupSheet(isPresented: $showingAddVLANGroup) }
-        .sheet(isPresented: $showingAddVLAN) { AddVLANSheet(isPresented: $showingAddVLAN) }
+        .padding(24)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.primary.opacity(0.05), lineWidth: 1)
+        )
+    }
+}
+
+struct QuickMetric: View {
+    let title: String
+    let value: String
+    let trend: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption2)
+                .bold()
+                .foregroundStyle(.secondary)
+                .kerning(1)
+            Text(value)
+                .font(.title2)
+                .bold()
+            Text(trend)
+                .font(.caption)
+                .foregroundStyle(.green)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(12)
     }
 }

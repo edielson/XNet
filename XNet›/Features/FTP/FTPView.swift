@@ -18,88 +18,135 @@ struct FTPView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Configuration Bar
-            VStack(spacing: 12) {
-                HStack {
-                    Text("File Transfer (FTP/SFTP)")
-                        .font(.largeTitle)
-                        .bold()
+            // MARK: - Premium Unified Header
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("File Transfer")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                        Text(connectionManager.isConnected ? "Connected to \(host)" : "Enter server details to explore files")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    
                     Spacer()
+                    
+                    HStack(spacing: 12) {
+                        Picker("", selection: $isSFTP) {
+                            Text("SFTP").tag(true)
+                            Text("FTP").tag(false)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 120)
+                        .onChange(of: isSFTP) { _, newSFTP in
+                            port = newSFTP ? "22" : "21"
+                        }
+                        
+                        Button(action: toggleConnection) {
+                            HStack {
+                                Image(systemName: connectionManager.isConnected ? "stop.fill" : "bolt.fill")
+                                Text(connectionManager.isConnected ? "Disconnect" : "Connect")
+                            }
+                            .frame(width: 100)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(connectionManager.isConnected ? .red : .blue)
+                        .disabled(host.isEmpty)
+                    }
                 }
                 
-                HStack(spacing: 12) {
-                    Picker("Protocol", selection: $isSFTP) {
-                        Text("SFTP").tag(true)
-                        Text("FTP").tag(false)
+                // Connection Input Bar
+                HStack(spacing: 16) {
+                    HStack(spacing: 12) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "server.rack")
+                                .foregroundStyle(.secondary)
+                                .font(.system(size: 10))
+                            TextField("Host", text: $host)
+                                .textFieldStyle(.plain)
+                                .frame(width: 140)
+                        }
+                        
+                        Divider().frame(height: 12)
+                        
+                        HStack(spacing: 4) {
+                            Image(systemName: "number")
+                                .foregroundStyle(.secondary)
+                                .font(.system(size: 10))
+                            TextField("Port", text: $port)
+                                .textFieldStyle(.plain)
+                                .frame(width: 40)
+                        }
+                        
+                        Divider().frame(height: 12)
+                        
+                        HStack(spacing: 4) {
+                            Image(systemName: "person.fill")
+                                .foregroundStyle(.secondary)
+                                .font(.system(size: 10))
+                            TextField("User", text: $username)
+                                .textFieldStyle(.plain)
+                                .frame(width: 80)
+                        }
+                        
+                        Divider().frame(height: 12)
+                        
+                        HStack(spacing: 4) {
+                            Image(systemName: "key.fill")
+                                .foregroundStyle(.secondary)
+                                .font(.system(size: 10))
+                            SecureField("Pass", text: $password)
+                                .textFieldStyle(.plain)
+                                .frame(width: 80)
+                        }
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: 150)
-                    .onChange(of: isSFTP) { _, newSFTP in
-                        port = newSFTP ? "22" : "21"
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(10)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                    )
+                    
+                    Spacer(minLength: 0)
+                    
+                    if connectionManager.isTransferring {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Transferring...")
+                                .font(.caption)
+                                .foregroundStyle(.blue)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(20)
                     }
-                    
-                    TextField("Host", text: $host)
-                        .textFieldStyle(.roundedBorder)
-                    
-                    TextField("Port", text: $port)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 60)
-                    
-                    TextField("Username", text: $username)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 120)
-                    
-                    SecureField("Password", text: $password)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 120)
-                    
-                    Button(action: toggleConnection) {
-                        Text(connectionManager.isConnected ? "Disconnect" : "Connect")
-                            .frame(width: 80)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(connectionManager.isConnected ? .red : .blue)
-                    .disabled(host.isEmpty)
                 }
             }
-            .padding()
-            .background(Color(NSColor.controlBackgroundColor))
+            .padding(.horizontal, 28)
+            .padding(.top, 32)
+            .padding(.bottom, 24)
+            .background(Color(NSColor.windowBackgroundColor))
             
             Divider()
             
             // Dual Pane View
             GeometryReader { geo in
                 HStack(spacing: 0) {
-                    // LEFT: Local Files
                     LocalFileBrowser(manager: connectionManager)
                         .frame(width: geo.size.width / 2)
                     
                     Divider()
                     
-                    // RIGHT: Remote Files
                     RemoteFileBrowser(manager: connectionManager)
                         .frame(width: geo.size.width / 2)
                 }
             }
-            
-            // Transfer Status Bar
-            Divider()
-            HStack {
-                Text(connectionManager.statusMessage)
-                    .font(.caption)
-                    .foregroundColor(connectionManager.isTransferring ? .blue : .secondary)
-                
-                Spacer()
-                
-                if connectionManager.isTransferring {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
-            .padding(8)
-            .background(Color(NSColor.windowBackgroundColor))
+            .background(Color.black.opacity(0.02))
         }
-        .navigationTitle("FTP / SFTP")
+        .navigationTitle("")
     }
     
     private func toggleConnection() {
@@ -139,11 +186,13 @@ struct LocalFileBrowser: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Local Site:")
-                    .bold()
-                TextField("", text: $currentPath)
-                    .textFieldStyle(.roundedBorder)
+            // Path Bar
+            HStack(spacing: 8) {
+                Image(systemName: "folder.badge.gearshape")
+                    .foregroundStyle(.blue)
+                TextField("Path", text: $currentPath)
+                    .textFieldStyle(.plain)
+                    .font(.system(.body, design: .monospaced))
                     .onSubmit { loadFiles() }
                 
                 Button(action: {
@@ -151,26 +200,32 @@ struct LocalFileBrowser: View {
                     currentPath = url.deletingLastPathComponent().path
                     loadFiles()
                 }) {
-                    Image(systemName: "arrow.up.doc")
+                    Image(systemName: "arrow.up.to.line")
+                        .font(.system(size: 11, weight: .bold))
                 }
+                .buttonStyle(.plain)
             }
-            .padding(10)
-            .background(Color(NSColor.controlBackgroundColor))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.primary.opacity(0.04))
+            .cornerRadius(8)
+            .padding(12)
             
             Divider()
             
-            HStack {
-                Image(systemName: "line.3.horizontal.decrease.circle")
-                    .foregroundColor(.secondary)
-                TextField("Filter files...", text: $searchText)
-                    .textFieldStyle(.plain)
-                if !searchText.isEmpty {
-                    Button(action: { searchText = "" }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
+            // Filter & Sort
+            HStack(spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                        .foregroundColor(.secondary)
+                        .font(.system(size: 12))
+                    TextField("Filter...", text: $searchText)
+                        .textFieldStyle(.plain)
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.primary.opacity(0.03))
+                .cornerRadius(6)
                 
                 Picker("", selection: $sortOption) {
                     ForEach(SortOption.allCases) { opt in
@@ -178,8 +233,10 @@ struct LocalFileBrowser: View {
                     }
                 }
                 .frame(width: 80)
+                .labelsHidden()
             }
-            .padding(6)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .background(Color(NSColor.windowBackgroundColor))
             
             Divider()
@@ -297,11 +354,13 @@ struct RemoteFileBrowser: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Remote Site:")
-                    .bold()
-                TextField("", text: $manager.remoteCurrentPath)
-                    .textFieldStyle(.roundedBorder)
+            // Path Bar
+            HStack(spacing: 8) {
+                Image(systemName: "network")
+                    .foregroundStyle(.purple)
+                TextField("Remote Path", text: $manager.remoteCurrentPath)
+                    .textFieldStyle(.plain)
+                    .font(.system(.body, design: .monospaced))
                     .onSubmit { manager.loadRemoteFiles() }
                     .disabled(!manager.isConnected)
                 
@@ -314,38 +373,46 @@ struct RemoteFileBrowser: View {
                         manager.loadRemoteFiles()
                     }
                 }) {
-                    Image(systemName: "arrow.up.doc")
+                    Image(systemName: "arrow.up.to.line")
+                        .font(.system(size: 11, weight: .bold))
                 }
+                .buttonStyle(.plain)
                 .disabled(!manager.isConnected)
             }
-            .padding(10)
-            .background(Color(NSColor.controlBackgroundColor))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.primary.opacity(0.04))
+            .cornerRadius(8)
+            .padding(12)
             
             Divider()
             
-            HStack {
-                Image(systemName: "line.3.horizontal.decrease.circle")
-                    .foregroundColor(.secondary)
-                TextField("Filter files...", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .disabled(!manager.isConnected)
-                if !searchText.isEmpty {
-                    Button(action: { searchText = "" }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
+            // Filter & Sort
+            HStack(spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                        .foregroundColor(.secondary)
+                        .font(.system(size: 12))
+                    TextField("Filter...", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .disabled(!manager.isConnected)
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.primary.opacity(0.03))
+                .cornerRadius(6)
                 
                 Picker("", selection: $sortOption) {
                     ForEach(SortOption.allCases) { opt in
                         Text(opt.rawValue).tag(opt)
                     }
                 }
-                .disabled(!manager.isConnected)
                 .frame(width: 80)
+                .labelsHidden()
+                .disabled(!manager.isConnected)
             }
-            .padding(6)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .background(Color(NSColor.windowBackgroundColor))
             
             Divider()

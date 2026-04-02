@@ -1,0 +1,5 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -scheme "XNet›" -project "XNet›.xcodeproj" -configuration Debug -destination platform=macOS build
+
+2026-04-01 14:08:38.084 xcodebuild[11732:310994] Writing error result bundle to /var/folders/3h/sd03fhjx2mn_jmf5c4rbh_rc0000gn/T/ResultBundle_2026-01-04_14-08-0038.xcresult
+xcodebuild: error: 'XNet›.xcodeproj' does not exist.

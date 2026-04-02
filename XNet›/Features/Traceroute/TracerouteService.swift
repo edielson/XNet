@@ -18,7 +18,6 @@ class TracerouteService {
     
     func trace(host: String) -> AsyncStream<TracerouteHop> {
         let address = self.getIPv4Address(host)
-        let stopSignal = CancelFlag()
         
         return AsyncStream { continuation in
             guard let resolvedAddress = address else {
@@ -32,9 +31,30 @@ class TracerouteService {
                 return
             }
             
-            Task.detached {
-                for ttl in 1...20 {
-                    if stopSignal.isCancelled { break }
+            // Bind the socket to port 0 to get an assigned ICMP identifier (mandatory for macOS)
+            var localAddr = sockaddr_in()
+            localAddr.sin_family = sa_family_t(AF_INET)
+            localAddr.sin_port = 0
+            localAddr.sin_addr.s_addr = INADDR_ANY
+            
+            _ = withUnsafePointer(to: &localAddr) {
+                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    Darwin.bind(sockID, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                }
+            }
+            
+            var boundAddr = sockaddr_in()
+            var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
+            _ = withUnsafeMutablePointer(to: &boundAddr) {
+                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    Darwin.getsockname(sockID, $0, &addrLen)
+                }
+            }
+            let identifier = UInt16(bigEndian: boundAddr.sin_port)
+            
+            let task = Task {
+                for ttl in 1...30 {
+                    if Task.isCancelled { break }
                     
                     var currentTTL: Int32 = Int32(ttl)
                     Darwin.setsockopt(sockID, IPPROTO_IP, IP_TTL, &currentTTL, socklen_t(MemoryLayout<Int32>.size))
@@ -43,12 +63,26 @@ class TracerouteService {
                     var hopIP = "*"
                     
                     for _ in 1...3 {
-                        if stopSignal.isCancelled { break }
+                        if Task.isCancelled { break }
                         let startTime = Date()
-                        var header = ICMPHeader(type: 8, code: 0, checksum: 0, identifier: 1234, sequence: UInt16(ttl))
-                        var packet = Data(bytes: &header, count: MemoryLayout<ICMPHeader>.size)
-                        header.checksum = TracerouteService.calculateChecksum(data: packet).bigEndian
-                        packet.replaceSubrange(0..<MemoryLayout<ICMPHeader>.size, with: Data(bytes: &header, count: MemoryLayout<ICMPHeader>.size))
+                        
+                        var header = ICMPHeader(
+                            type: 8,
+                            code: 0,
+                            checksum: 0,
+                            identifier: identifier.bigEndian,
+                            sequence: UInt16(ttl).bigEndian
+                        )
+                        
+                        var packet = Data(count: MemoryLayout<ICMPHeader>.size)
+                        packet.withUnsafeMutableBytes { (bytes: UnsafeMutableRawBufferPointer) in
+                            bytes.bindMemory(to: ICMPHeader.self).baseAddress!.pointee = header
+                        }
+                        
+                        let cksum = TracerouteService.calculateChecksum(data: packet)
+                        packet.withUnsafeMutableBytes { (bytes: UnsafeMutableRawBufferPointer) in
+                            bytes.bindMemory(to: ICMPHeader.self).baseAddress!.pointee.checksum = cksum.bigEndian
+                        }
                         
                         var addr = sockaddr_in()
                         addr.sin_family = sa_family_t(AF_INET)
@@ -57,7 +91,7 @@ class TracerouteService {
                         
                         let sent = withUnsafePointer(to: &addr) {
                             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                                Darwin.sendto(sockID, (packet as NSData).bytes, packet.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                                Darwin.sendto(sockID, (packet as Data).withUnsafeBytes { $0.baseAddress! }, packet.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
                             }
                         }
                         
@@ -65,7 +99,7 @@ class TracerouteService {
                             var buffer = [UInt8](repeating: 0, count: 1024)
                             var fromAddr = sockaddr_in()
                             var fromLen = socklen_t(MemoryLayout<sockaddr_in>.size)
-                            var tv = timeval(tv_sec: 1, tv_usec: 0)
+                            var tv = timeval(tv_sec: 1, tv_usec: 500000) // 1.5s timeout
                             Darwin.setsockopt(sockID, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
                             
                             let res = withUnsafeMutablePointer(to: &fromAddr) { ptr -> Int in
@@ -76,7 +110,7 @@ class TracerouteService {
                             
                             if res >= 0 {
                                 let duration = Date().timeIntervalSince(startTime) * 1000
-                                times.append(String(format: "%.2f ms", duration))
+                                times.append(String(format: "%.2fms", duration))
                                 
                                 var hostBuf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
                                 var sinAddr = fromAddr.sin_addr
@@ -88,27 +122,38 @@ class TracerouteService {
                         } else {
                             times.append("*")
                         }
+                        
+                        // Pequeno delay entre tentativas de um mesmo hop
+                        try? await Task.sleep(nanoseconds: 50_000_000)
                     }
                     
                     continuation.yield(TracerouteHop(
                         id: ttl,
-                        host: "*",
+                        host: hopIP == "*" ? "???" : hopIP,
                         ip: hopIP,
-                        time1: times.indices.contains(0) ? times[0] : "*",
-                        time2: times.indices.contains(1) ? times[1] : "*",
-                        time3: times.indices.contains(2) ? times[2] : "*"
+                        time1: times.count > 0 ? times[0] : "*",
+                        time2: times.count > 1 ? times[1] : "*",
+                        time3: times.count > 2 ? times[2] : "*"
                     ))
                     
-                    if hopIP == host { break }
+                    if hopIP != "*" && hopIP == hostIPString(resolvedAddress) { break }
                 }
                 Darwin.close(sockID)
                 continuation.finish()
             }
             
             continuation.onTermination = { @Sendable _ in
-                stopSignal.isCancelled = true
+                task.cancel()
+                Darwin.close(sockID)
             }
         }
+    }
+    
+    private func hostIPString(_ addr: in_addr_t) -> String {
+        var a = addr
+        var hostBuf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+        inet_ntop(AF_INET, &a, &hostBuf, socklen_t(INET_ADDRSTRLEN))
+        return String(cString: hostBuf)
     }
     
     private func getIPv4Address(_ host: String) -> in_addr_t? {

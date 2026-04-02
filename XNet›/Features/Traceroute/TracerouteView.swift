@@ -13,73 +13,118 @@ struct TracerouteView: View {
     @State private var currentTask: Task<Void, Never>? = nil
     
     var body: some View {
-        VStack(spacing: 20) {
-            HStack {
-                Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.blue)
-                
-                Text("Traceroute")
-                    .font(.largeTitle)
-                    .bold()
-                
-                Spacer()
-            }
-            .padding([.top, .horizontal])
-            
-            HStack {
-                TextField("Address (e.g. google.com)", text: $targetHost)
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(isRunning)
-                
-                Button(action: {
-                    if isRunning {
-                        stopTrace()
-                    } else {
-                        startTrace()
+        VStack(spacing: 0) {
+            // High-End Header
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Route Trace")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                        Text(isRunning ? "Tracing route to \(targetHost)..." : "Map the path to a remote host")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
-                }) {
-                    Text(isRunning ? "Stop" : "Start")
-                        .frame(width: 80)
+                    
+                    Spacer()
+                    
+                    HStack(spacing: 12) {
+                        if isRunning {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        
+                        Button(action: {
+                            isRunning ? stopTrace() : startTrace()
+                        }) {
+                            HStack {
+                                Image(systemName: isRunning ? "stop.fill" : "play.fill")
+                                Text(isRunning ? "Stop" : "Trace")
+                            }
+                            .frame(width: 100)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(isRunning ? .red : .blue)
+                        .keyboardShortcut(.defaultAction)
+                    }
                 }
-                .keyboardShortcut(.defaultAction)
+                
+                // Search & Input Bar
+                HStack(spacing: 16) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "map.fill")
+                            .foregroundStyle(.blue)
+                            .font(.system(size: 14, weight: .bold))
+                        
+                        TextField("Host or IP (e.g. 1.1.1.1)", text: $targetHost)
+                            .textFieldStyle(.plain)
+                            .font(.system(.body, design: .monospaced))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(10)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                    )
+                    .disabled(isRunning)
+                    
+                    Spacer(minLength: 0)
+                    
+                    Button(action: { hops.removeAll() }) {
+                        Image(systemName: "broom.fill")
+                            .foregroundStyle(.secondary)
+                            .font(.system(size: 14))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear Results")
+                }
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 28)
+            .padding(.top, 32)
+            .padding(.bottom, 24)
+            .background(Color(NSColor.windowBackgroundColor))
+
             
+            Divider()
+            
+            // Modern Results Table
             Table(hops) {
                 TableColumn("Hop") { hop in
                     Text("\(hop.id)")
-                        .foregroundColor(.secondary)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.secondary)
                 }
                 .width(40)
                 
-                TableColumn("IP Address") { hop in
+                TableColumn("Node Address") { hop in
                     Text(hop.ip)
                         .font(.system(.body, design: .monospaced))
+                        .bold()
+                }
+                .width(180)
+                
+                TableColumn("T1") { hop in 
+                    Text(hop.time1)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(hop.time1.contains("*") ? .red : .primary)
                 }
                 
-                TableColumn("Time 1") { hop in Text(hop.time1) }
-                TableColumn("Time 2") { hop in Text(hop.time2) }
-                TableColumn("Time 3") { hop in Text(hop.time3) }
-            }
-            .background(Color(.textBackgroundColor))
-            .cornerRadius(8)
-            .padding(.horizontal)
-            
-            HStack {
-                Text(isRunning ? "Tracing native route to \(targetHost)..." : "Ready")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Spacer()
-                if isRunning {
-                    ProgressView()
-                        .scaleEffect(0.5)
+                TableColumn("T2") { hop in 
+                    Text(hop.time2)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(hop.time2.contains("*") ? .red : .primary)
+                }
+                
+                TableColumn("T3") { hop in 
+                    Text(hop.time3)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(hop.time3.contains("*") ? .red : .primary)
                 }
             }
-            .padding(.horizontal)
-            .padding(.bottom)
+            .tableStyle(.inset)
         }
-        .navigationTitle("Traceroute")
+        .navigationTitle("Traceroute Diagnostic")
         .onDisappear {
             stopTrace()
         }

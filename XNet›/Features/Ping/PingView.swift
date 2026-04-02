@@ -13,87 +13,147 @@ struct PingView: View {
     @State private var currentTask: Task<Void, Never>? = nil
     
     var body: some View {
-        VStack(spacing: 20) {
-            HStack {
-                Image(systemName: "waveform.path.ecg")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.blue)
-                
-                Text("Ping")
-                    .font(.largeTitle)
-                    .bold()
-                
-                Spacer()
-            }
-            .padding([.top, .horizontal])
-            
-            HStack {
-                TextField("Host or IP", text: $targetHost)
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(isRunning)
-                
-                Button(action: {
-                    if isRunning {
-                        stopPing()
-                    } else {
-                        startPing()
+        VStack(spacing: 0) {
+            // High-End Header
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Latency Monitor")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                        Text(isRunning ? "Pinging \(targetHost)..." : "Enter a host to start diagnostic")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
-                }) {
-                    Text(isRunning ? "Stop" : "Start")
-                        .frame(width: 80)
+                    
+                    Spacer()
+                    
+                    HStack(spacing: 12) {
+                        if isRunning {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else if !pingResults.isEmpty {
+                            let avg = pingResults.map(\.time).reduce(0, +) / Double(pingResults.count)
+                            HStack(spacing: 4) {
+                                Text("AVG")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                                Text(String(format: "%.2f ms", avg))
+                                    .font(.system(size: 14, weight: .black, design: .monospaced))
+                                    .foregroundStyle(avg < 50 ? .green : (avg < 150 ? .orange : .red))
+                            }
+                            .padding(.trailing, 8)
+                        }
+                        
+                        Button(action: {
+                            isRunning ? stopPing() : startPing()
+                        }) {
+                            HStack {
+                                Image(systemName: isRunning ? "stop.fill" : "play.fill")
+                                Text(isRunning ? "Stop" : "Ping Now")
+                            }
+                            .frame(width: 100)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(isRunning ? .red : .blue)
+                        .keyboardShortcut(.defaultAction)
+                    }
                 }
-                .keyboardShortcut(.defaultAction)
+                
+                // Search & Input Bar
+                HStack(spacing: 16) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "waveform.path.ecg")
+                            .foregroundStyle(.blue)
+                            .font(.system(size: 14, weight: .bold))
+                        
+                        TextField("Host or IP (e.g. google.com)", text: $targetHost)
+                            .textFieldStyle(.plain)
+                            .font(.system(.body, design: .monospaced))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(10)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                    )
+                    .disabled(isRunning)
+                    
+                    Spacer(minLength: 0)
+                    
+                    Button(action: { pingResults.removeAll() }) {
+                        Image(systemName: "broom.fill")
+                            .foregroundStyle(.secondary)
+                            .font(.system(size: 14))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear Results")
+                }
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 28)
+            .padding(.top, 32)
+            .padding(.bottom, 24)
+            .background(Color(NSColor.windowBackgroundColor))
+
             
+            Divider()
+            
+            // MARK: - Technical Results Table
             Table(pingResults) {
                 TableColumn("Seq") { res in
                     Text("\(res.sequence)")
-                        .foregroundColor(.secondary)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.secondary)
                 }
-                .width(50)
+                .width(40)
                 
-                TableColumn("IP Address") { res in
+                TableColumn("IP / Interface") { res in
                     Text(res.ip)
                         .font(.system(.body, design: .monospaced))
+                        .bold()
+                        .foregroundStyle(res.bytes == 0 ? .red : .primary)
                 }
+                .width(220) // Largura aumentada para suportar "Request Timed Out"
                 
-                TableColumn("Bytes") { res in
-                    Text("\(res.bytes)")
-                        .foregroundColor(.blue)
+                TableColumn("Payload") { res in
+                    Text(res.bytes > 0 ? "\(res.bytes) bytes" : "---")
+                        .foregroundStyle(.tertiary)
+                }
+                .width(100)
+                
+                TableColumn("TTL") { res in
+                    Text(res.ttl > 0 ? "\(res.ttl)" : "---")
+                        .foregroundStyle(.secondary)
                 }
                 .width(60)
                 
-                TableColumn("TTL") { res in
-                    Text("\(res.ttl)")
-                }
-                .width(50)
-                
-                TableColumn("Time") { res in
-                    Text(String(format: "%.2f ms", res.time))
-                        .bold()
-                        .foregroundColor(res.time < 50 ? .green : (res.time < 150 ? .yellow : .red))
-                }
-            }
-            .background(Color(.textBackgroundColor))
-            .cornerRadius(8)
-            .padding(.horizontal)
-            
-            HStack {
-                Text(isRunning ? "Pinging \(targetHost)..." : "Ready")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Spacer()
-                if !pingResults.isEmpty {
-                    let avg = pingResults.map(\.time).reduce(0, +) / Double(pingResults.count)
-                    Text(String(format: "Avg: %.2f ms", avg))
-                        .font(.caption.bold())
+                TableColumn("Latency") { res in
+                    HStack(spacing: 8) {
+                        if res.bytes > 0 && res.time > 0 {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(res.time < 50 ? .green : (res.time < 150 ? .orange : .red))
+                                .frame(width: 4, height: 16)
+                            
+                            Text(String(format: "%.2f ms", res.time))
+                                .font(.system(.body, design: .monospaced))
+                                .bold()
+                                .foregroundColor(res.time < 50 ? .green : (res.time < 150 ? .orange : .red))
+                        } else {
+                            // Erro de Conexão ou Timeout
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(.red.opacity(0.3))
+                                .frame(width: 4, height: 16)
+                            Text("TIMED OUT")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.red.opacity(0.8))
+                        }
+                    }
                 }
             }
-            .padding(.horizontal)
-            .padding(.bottom)
+            .tableStyle(.inset)
         }
-        .navigationTitle("Ping")
+        .navigationTitle("Ping Diagnostic")
         .onDisappear {
             stopPing()
         }

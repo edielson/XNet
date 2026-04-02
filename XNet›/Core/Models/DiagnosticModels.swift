@@ -30,22 +30,21 @@ struct ScannedDevice: Identifiable, Sendable {
     let mac: String
     let hostname: String
     let vendor: String
+    var isOnline: Bool = true
 }
 
 struct ScannedPort: Identifiable, Sendable {
     let id = UUID()
     let port: Int
     let protocolName: String
-    let state: String
+    var state: String
 }
 
 // Thread-safe flag - @unchecked Sendable to allow manual locking
-// Marked nonisolated to prevent the compiler from inferring MainActor isolation
 final class CancelFlag: @unchecked Sendable {
     private let lock = NSLock()
-    private var _flag = false
+    nonisolated(unsafe) private var _flag = false
     
-    // Explicitly nonisolated to be accessible from any Sendable closure
     nonisolated var isCancelled: Bool {
         get {
             lock.lock()

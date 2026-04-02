@@ -10,6 +10,8 @@ struct DetailContentView: View {
     
     var body: some View {
         switch tool {
+        case .home:
+            HomeView()
         case .ping:
             PingView()
         case .traceroute:
@@ -18,6 +20,7 @@ struct DetailContentView: View {
             IPScanView()
         case .portScan:
             PortScanView()
+
         case .terminal:
             TerminalView()
         case .ftp:
@@ -26,10 +29,6 @@ struct DetailContentView: View {
             SubnetCalculatorView()
         case .netbox:
             NetBoxView()
-        case .devices:
-            InventoryDevicesView()
-        default:
-            PlaceholderView(tool: tool)
         }
     }
 }
