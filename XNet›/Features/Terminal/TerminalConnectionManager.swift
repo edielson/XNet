@@ -193,41 +193,20 @@ class TerminalConnectionManager {
         }
     }
     
-    private var isParsingEscape = false
-    private var escapeBuffer = ""
-    
     private func processIncomingData(_ newString: String) {
         var current = self.logs
-        for char in newString {
-            if isParsingEscape {
-                escapeBuffer.append(char)
-                if char.isASCII && char.isLetter {
-                    if char == "D" { // Cursor Backward (Left)
-                        let numStr = escapeBuffer.filter { $0.isNumber }
-                        let count = Int(numStr) ?? 1
-                        for _ in 0..<count {
-                            if !current.isEmpty { current.removeLast() }
-                        }
-                    } else if char == "J" { // Clear Screen
-                        if escapeBuffer.contains("2") {
-                            current.removeAll()
-                        }
-                    }
-                    // We ignore C, A, B, H, K, etc. for simple line editing and display
-                    isParsingEscape = false
-                } else if !char.isNumber && char != "[" && char != ";" && char != "?" {
-                    // Abort on malformed escape sequences
-                    isParsingEscape = false
-                }
-            } else if char == "\u{1B}" { // Escape sequence start
-                isParsingEscape = true
-                escapeBuffer = ""
-            } else if char == "\u{08}" || char == "\u{7F}" { // Backspace or Delete
+        for scalar in newString.unicodeScalars {
+            switch scalar.value {
+            case 8, 127:
                 if !current.isEmpty {
                     current.removeLast()
                 }
-            } else if char != "\r" { // Ignore raw carriage returns to avoid UI shifting
-                current.append(char)
+            case 13:
+                if !current.hasSuffix("\n") {
+                    current.append("\n")
+                }
+            default:
+                current.unicodeScalars.append(scalar)
             }
         }
         self.logs = current

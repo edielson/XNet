@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import SwiftData
 
 // Common diagnostic models
 struct PingResult: Identifiable, Sendable {
@@ -59,4 +60,23 @@ final class CancelFlag: @unchecked Sendable {
     }
     
     init() {}
+}
+
+@Model
+final class TerminalDevice {
+    var name: String
+    var connectionType: String
+    var host: String
+    var port: String
+    var username: String
+    var notes: String
+    
+    init(name: String, connectionType: String = "SSH", host: String, port: String, username: String = "", notes: String = "") {
+        self.name = name
+        self.connectionType = connectionType
+        self.host = host
+        self.port = port
+        self.username = username
+        self.notes = notes
+    }
 }
