@@ -11,6 +11,7 @@ struct FTPView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var connectionManager = FTPConnectionManager()
     @State private var registeredDevices: [TerminalDevice] = []
+    @State private var selectedThemeID = TerminalThemeStore.readThemeID()
     
     // Connection Settings
     @State private var host = ""
@@ -21,6 +22,10 @@ struct FTPView: View {
     @State private var selectedCredentialID: String?
     @State private var selectedGroupFilter = "Todos"
     @State private var deviceSearch = ""
+    
+    private var selectedTheme: TerminalTheme {
+        TerminalTheme(rawValue: selectedThemeID) ?? .defaultTheme
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -47,7 +52,10 @@ struct FTPView: View {
             }
             .background(
                 LinearGradient(
-                    colors: [Color.black.opacity(0.03), Color.blue.opacity(0.02)],
+                    colors: [
+                        selectedTheme.chromeTopColor.opacity(selectedTheme.isLight ? 0.95 : 0.72),
+                        selectedTheme.accentColor.opacity(selectedTheme.isLight ? 0.03 : 0.06)
+                    ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -56,8 +64,8 @@ struct FTPView: View {
         .background(
             LinearGradient(
                 colors: [
-                    Color(NSColor.windowBackgroundColor),
-                    Color(NSColor.controlBackgroundColor).opacity(0.96)
+                    selectedTheme.chromeTopColor,
+                    selectedTheme.chromeBottomColor
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -70,6 +78,13 @@ struct FTPView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TerminalDevicesUpdated"))) { _ in
             loadRegisteredDevices()
         }
+        .onReceive(NotificationCenter.default.publisher(for: TerminalThemeStore.didChangeNotification)) { output in
+            if let themeID = output.object as? String {
+                selectedThemeID = themeID
+            } else {
+                selectedThemeID = TerminalThemeStore.readThemeID()
+            }
+        }
     }
     
     private var headerSection: some View {
@@ -78,13 +93,14 @@ struct FTPView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("File Transfer")
                         .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(selectedTheme.foregroundColor)
                     HStack(spacing: 8) {
                         Circle()
                             .fill(connectionManager.isConnected ? Color.green : Color.secondary.opacity(0.5))
                             .frame(width: 8, height: 8)
                         Text(connectionManager.isConnected ? "Sessão ativa em \(transferProtocol.rawValue.uppercased()) • \(host)" : "Clique em um dispositivo e conecte automaticamente")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(selectedTheme.mutedColor)
                     }
                 }
                 
@@ -110,7 +126,7 @@ struct FTPView: View {
                         .frame(width: 110)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(connectionManager.isConnected ? .red : .blue)
+                    .tint(connectionManager.isConnected ? .red : selectedTheme.accentColor)
                     .disabled(host.isEmpty)
                 }
             }
@@ -138,7 +154,7 @@ struct FTPView: View {
                 VStack(alignment: .trailing, spacing: 6) {
                     Text(connectionManager.statusMessage)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(selectedTheme.mutedColor)
                         .lineLimit(2)
                         .multilineTextAlignment(.trailing)
                     if connectionManager.isTransferring {
@@ -146,11 +162,11 @@ struct FTPView: View {
                             ProgressView().controlSize(.small)
                             Text("Transferindo...")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(selectedTheme.accentColor)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .background(Color.blue.opacity(0.12))
+                        .background(selectedTheme.accentColor.opacity(selectedTheme.isLight ? 0.12 : 0.16))
                         .clipShape(Capsule())
                     }
                 }
@@ -159,7 +175,13 @@ struct FTPView: View {
         .padding(.horizontal, 28)
         .padding(.top, 28)
         .padding(.bottom, 18)
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(
+            LinearGradient(
+                colors: [selectedTheme.chromeTopColor, selectedTheme.chromeBottomColor],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
     }
     
     private var deviceSidebar: some View {
@@ -168,17 +190,18 @@ struct FTPView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Hosts")
                         .font(.headline)
+                        .foregroundStyle(selectedTheme.foregroundColor)
                     Text("FTP, SFTP e SCP via cadastro")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(selectedTheme.mutedColor)
                 }
                 Spacer()
                 Text("\(filteredRegisteredDevices.count)")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(selectedTheme.mutedColor)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Color.primary.opacity(0.08))
+                    .background(selectedTheme.cardBackgroundColor.opacity(selectedTheme.isLight ? 0.92 : 0.64))
                     .clipShape(Capsule())
             }
             .padding(.horizontal, 14)
@@ -188,13 +211,14 @@ struct FTPView: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(selectedTheme.mutedColor)
                 TextField("Buscar host, IP ou grupo", text: $deviceSearch)
                     .textFieldStyle(.plain)
+                    .foregroundStyle(selectedTheme.foregroundColor)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(Color.primary.opacity(0.05))
+            .background(selectedTheme.cardBackgroundColor.opacity(selectedTheme.isLight ? 0.92 : 0.58))
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .padding(.horizontal, 14)
             
@@ -215,7 +239,7 @@ struct FTPView: View {
                 
                 Text("Clique para conectar")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(selectedTheme.mutedColor)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
@@ -227,13 +251,14 @@ struct FTPView: View {
                             HStack(spacing: 8) {
                                 Image(systemName: "folder.fill")
                                     .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(selectedTheme.mutedColor)
                                 Text(group.group)
                                     .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(selectedTheme.foregroundColor)
                                 Spacer()
                                 Text("\(group.devices.count)")
                                     .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(selectedTheme.mutedColor)
                             }
                             
                             ForEach(group.devices) { device in
@@ -248,7 +273,7 @@ struct FTPView: View {
         }
         .background(
             LinearGradient(
-                colors: [Color(NSColor.controlBackgroundColor), Color(NSColor.windowBackgroundColor)],
+                colors: [selectedTheme.sidebarTopColor, selectedTheme.sidebarBottomColor],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -259,17 +284,18 @@ struct FTPView: View {
         VStack(alignment: .leading, spacing: 6) {
             Label(title, systemImage: icon)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(selectedTheme.mutedColor)
             content()
+                .foregroundStyle(selectedTheme.foregroundColor)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(width: width, alignment: .leading)
-        .background(Color(NSColor.textBackgroundColor))
+        .background(selectedTheme.cardBackgroundColor.opacity(selectedTheme.isLight ? 0.94 : 0.7))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                .stroke(selectedTheme.panelBorderColor.opacity(selectedTheme.isLight ? 0.35 : 0.45), lineWidth: 1)
         )
     }
     
@@ -281,25 +307,25 @@ struct FTPView: View {
                 HStack(spacing: 10) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10)
-                            .fill(Color.blue.opacity(0.16))
+                            .fill(selectedTheme.accentColor.opacity(selectedTheme.isLight ? 0.16 : 0.24))
                             .frame(width: 34, height: 34)
                         Image(systemName: protocolIcon(device))
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(selectedTheme.accentColor)
                     }
                     
                     VStack(alignment: .leading, spacing: 3) {
                         Text(device.name)
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(selectedTheme.foregroundColor)
                             .lineLimit(1)
                         Text("\(device.username.isEmpty ? "sem usuário" : device.username) • \(device.host)")
                             .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(selectedTheme.mutedColor)
                             .lineLimit(1)
                         Text("Preferido: \(preferredProtocol(for: device).rawValue.uppercased())")
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(selectedTheme.accentColor)
                     }
                     
                     Spacer()
@@ -319,11 +345,11 @@ struct FTPView: View {
             }
         }
         .padding(12)
-        .background(selectedCredentialID == device.credentialID ? Color.accentColor.opacity(0.14) : Color.white.opacity(0.04))
+        .background(selectedCredentialID == device.credentialID ? selectedTheme.accentColor.opacity(selectedTheme.isLight ? 0.14 : 0.18) : selectedTheme.cardBackgroundColor.opacity(selectedTheme.isLight ? 0.9 : 0.42))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(selectedCredentialID == device.credentialID ? Color.accentColor.opacity(0.32) : Color.white.opacity(0.06), lineWidth: 1)
+                .stroke(selectedCredentialID == device.credentialID ? selectedTheme.accentColor.opacity(0.38) : selectedTheme.panelBorderColor.opacity(selectedTheme.isLight ? 0.32 : 0.45), lineWidth: 1)
         )
     }
     
