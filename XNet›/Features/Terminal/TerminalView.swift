@@ -361,6 +361,9 @@ struct TerminalView: View {
         .onChange(of: selectedThemeID) { _, newValue in
             TerminalThemeStore.saveThemeID(newValue)
         }
+        .onDisappear {
+            persistLogIfNeeded(forTabID: selectedTabID)
+        }
         .sheet(isPresented: $showingDeviceForm) {
             TerminalDeviceFormSheet(deviceToEdit: editingDevice, availableGroups: formGroupOptions) { payload in
                 saveDevice(payload)
@@ -1448,6 +1451,13 @@ private struct TerminalDevicePayload {
     var notes: String
 }
 
+private struct TerminalSnippetPayload {
+    var title: String
+    var command: String
+    var notes: String
+    var sendReturn: Bool
+}
+
 private struct TerminalDeviceEntry: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
@@ -1522,10 +1532,358 @@ private struct TerminalTabItem: Identifiable {
     var password: String = ""
     var availableSerialPorts: [String] = []
     var manager: TerminalConnectionManager = TerminalConnectionManager()
+    var sessionStartedAt: Date?
+    var persistedLogSignature: String?
     
     var displayName: String {
         let trimmedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmedHost.isEmpty ? name : trimmedHost
+    }
+}
+
+private struct TerminalSnippetEntry: Identifiable, Codable, Equatable {
+    let id: UUID
+    var title: String
+    var command: String
+    var notes: String
+    var sendReturn: Bool
+}
+
+private struct TerminalSessionLogEntry: Identifiable, Codable, Equatable {
+    let id: UUID
+    var title: String
+    var connectionType: String
+    var host: String
+    var port: String
+    var username: String
+    var startedAt: Date
+    var endedAt: Date
+    var content: String
+    
+    var subtitle: String {
+        let identity = username.isEmpty ? host : "\(username)@\(host)"
+        return "\(connectionType) • \(identity):\(port)"
+    }
+}
+
+private struct TerminalDeviceFormSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    let snippets: [TerminalSnippetEntry]
+    @Binding var searchText: String
+    let canSend: Bool
+    let onAdd: () -> Void
+    let onEdit: (TerminalSnippetEntry) -> Void
+    let onDelete: (TerminalSnippetEntry) -> Void
+    let onSend: (TerminalSnippetEntry) -> Void
+    let onSave: (TerminalSnippetPayload) -> Void
+    let editingSnippet: TerminalSnippetEntry?
+    
+    @State private var showingForm = false
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Snippets")
+                        .font(.title3.bold())
+                    Text("Comandos persistentes para reuso rápido")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Fechar") {
+                    dismiss()
+                }
+                Button {
+                    onAdd()
+                    showingForm = true
+                } label: {
+                    Label("Novo", systemImage: "plus")
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+            
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Buscar snippet", text: $searchText)
+                    .textFieldStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color.primary.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    ForEach(snippets) { snippet in
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(alignment: .top, spacing: 10) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(snippet.title)
+                                        .font(.headline)
+                                    if !snippet.notes.isEmpty {
+                                        Text(snippet.notes)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                if snippet.sendReturn {
+                                    Text("ENTER")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.accentColor.opacity(0.12))
+                                        .clipShape(Capsule())
+                                }
+                            }
+                            
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                Text(snippet.command)
+                                    .font(.system(.body, design: .monospaced))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(10)
+                            }
+                            .background(Color.primary.opacity(0.05))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            
+                            HStack {
+                                Button {
+                                    onEdit(snippet)
+                                    showingForm = true
+                                } label: {
+                                    Label("Editar", systemImage: "square.and.pencil")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                
+                                Button(role: .destructive) {
+                                    onDelete(snippet)
+                                } label: {
+                                    Label("Excluir", systemImage: "trash")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                
+                                Spacer()
+                                
+                                Button {
+                                    onSend(snippet)
+                                } label: {
+                                    Label("Executar", systemImage: "paperplane.fill")
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .disabled(!canSend)
+                            }
+                        }
+                        .padding(14)
+                        .background(Color.primary.opacity(0.04))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    
+                    if snippets.isEmpty {
+                        VStack(spacing: 10) {
+                            Image(systemName: "terminal.textbox")
+                                .font(.system(size: 30))
+                                .foregroundStyle(.secondary)
+                            Text("Nenhum snippet cadastrado")
+                                .font(.headline)
+                            Text("Crie comandos prontos para executar no terminal sem redigitar.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 36)
+                    }
+                }
+            }
+        }
+        .padding(18)
+        .frame(width: 760, height: 560)
+        .sheet(isPresented: $showingForm) {
+            TerminalSnippetFormSheet(snippetToEdit: editingSnippet, onSave: onSave)
+        }
+    }
+}
+
+private struct TerminalSnippetFormSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    let snippetToEdit: TerminalSnippetEntry?
+    let onSave: (TerminalSnippetPayload) -> Void
+    
+    @State private var title = ""
+    @State private var command = ""
+    @State private var notes = ""
+    @State private var sendReturn = true
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            Text(snippetToEdit == nil ? "Novo Snippet" : "Editar Snippet")
+                .font(.title3.bold())
+            
+            Form {
+                TextField("Nome", text: $title)
+                Toggle("Enviar ENTER ao final", isOn: $sendReturn)
+                TextField("Notas", text: $notes)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Comando")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextEditor(text: $command)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 180)
+                        .padding(6)
+                        .background(Color.primary.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+            .formStyle(.grouped)
+            
+            HStack {
+                Spacer()
+                Button("Cancelar", role: .cancel) {
+                    dismiss()
+                }
+                Button("Salvar") {
+                    onSave(
+                        TerminalSnippetPayload(
+                            title: title,
+                            command: command,
+                            notes: notes,
+                            sendReturn: sendReturn
+                        )
+                    )
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(18)
+        .frame(width: 560, height: 430)
+        .onAppear {
+            guard let snippetToEdit else { return }
+            title = snippetToEdit.title
+            command = snippetToEdit.command
+            notes = snippetToEdit.notes
+            sendReturn = snippetToEdit.sendReturn
+        }
+    }
+}
+
+private struct TerminalLogHistorySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    let logs: [TerminalSessionLogEntry]
+    @Binding var searchText: String
+    let onDelete: (TerminalSessionLogEntry) -> Void
+    let onClear: () -> Void
+    
+    private let formatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Logs Persistentes")
+                        .font(.title3.bold())
+                    Text("Histórico das sessões encerradas ou trocadas")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if !logs.isEmpty {
+                    Button("Limpar Tudo", role: .destructive) {
+                        onClear()
+                    }
+                }
+                Button("Fechar") {
+                    dismiss()
+                }
+            }
+            
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Buscar por host, usuário ou conteúdo", text: $searchText)
+                    .textFieldStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color.primary.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    ForEach(logs) { entry in
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(entry.title)
+                                        .font(.headline)
+                                    Text(entry.subtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Text("Início: \(formatter.string(from: entry.startedAt)) • Fim: \(formatter.string(from: entry.endedAt))")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button(role: .destructive) {
+                                    onDelete(entry)
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                            
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                Text(entry.content)
+                                    .font(.system(.body, design: .monospaced))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(10)
+                            }
+                            .background(Color.primary.opacity(0.05))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        .padding(14)
+                        .background(Color.primary.opacity(0.04))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    
+                    if logs.isEmpty {
+                        VStack(spacing: 10) {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.system(size: 30))
+                                .foregroundStyle(.secondary)
+                            Text("Nenhum log salvo")
+                                .font(.headline)
+                            Text("Os logs das sessões passam a ser preservados localmente conforme você desconecta, fecha abas ou inicia uma nova sessão.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 36)
+                    }
+                }
+            }
+        }
+        .padding(18)
+        .frame(width: 860, height: 600)
     }
 }
 
@@ -1695,6 +2053,14 @@ private enum TerminalThemeStore {
     static func saveThemeID(_ themeID: String) {
         UserDefaults.standard.set(themeID, forKey: storageKey)
     }
+}
+
+private enum TerminalSnippetStore {
+    static let storageKey = "terminal.snippet.cache.v1"
+}
+
+private enum TerminalSessionLogStore {
+    static let storageKey = "terminal.session.log.cache.v1"
 }
 
 private struct TerminalDeviceRegistryPayload: Codable {
