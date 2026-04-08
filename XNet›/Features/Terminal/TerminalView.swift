@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import Security
 
 struct TerminalView: View {
     @Environment(\.modelContext) private var modelContext
@@ -32,12 +31,17 @@ struct TerminalView: View {
                 tabBar
                 
                 HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 10) {
                         Text("Shell Terminal")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
-                        Text(manager.isConnected ? "Session active via \(connectionType.rawValue)" : "Configure your connection")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            Image(systemName: manager.isConnected ? "waveform.path.ecg" : "bolt.horizontal")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(manager.isConnected ? .green : .secondary)
+                            Text(manager.isConnected ? "Sessão ativa via \(connectionType.rawValue)" : "Pronto para conectar")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     
                     Spacer()
@@ -50,6 +54,7 @@ struct TerminalView: View {
                             Label("Novo", systemImage: "plus")
                         }
                         .buttonStyle(.bordered)
+                        .controlSize(.small)
                         
                         Button {
                             guard let selectedDevice else { return }
@@ -59,6 +64,7 @@ struct TerminalView: View {
                             Label("Editar", systemImage: "square.and.pencil")
                         }
                         .buttonStyle(.bordered)
+                        .controlSize(.small)
                         .disabled(selectedDevice == nil)
                         
                         Button(role: .destructive) {
@@ -68,6 +74,7 @@ struct TerminalView: View {
                             Label("Excluir", systemImage: "trash")
                         }
                         .buttonStyle(.bordered)
+                        .controlSize(.small)
                         .disabled(selectedDevice == nil)
                         
                         Button {
@@ -76,6 +83,7 @@ struct TerminalView: View {
                             Label(isDeviceListVisible ? "Ocultar Lista" : "Mostrar Lista", systemImage: isDeviceListVisible ? "sidebar.left" : "sidebar.right")
                         }
                         .buttonStyle(.bordered)
+                        .controlSize(.small)
                         
                         Picker("", selection: $connectionType) {
                             ForEach(ConnectionType.allCases) { Text($0.rawValue).tag($0) }
@@ -93,6 +101,7 @@ struct TerminalView: View {
                         .buttonStyle(.borderedProminent)
                         .tint(manager.isConnected ? .red : .blue)
                         .disabled(host.isEmpty && connectionType != .serial)
+                        .controlSize(.small)
                     }
                 }
                 
@@ -110,6 +119,13 @@ struct TerminalView: View {
                         HStack {
                             Text("Dispositivos Salvos")
                                 .font(.headline)
+                            Text("\(savedDevices.count)")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.primary.opacity(0.08))
+                                .clipShape(Capsule())
                             Spacer()
                         }
                         .padding(.horizontal, 12)
@@ -162,7 +178,7 @@ struct TerminalView: View {
                             }
                             .padding(.vertical, 6)
                             .padding(.horizontal, 4)
-                            .background(selectedDeviceID == device.id ? Color.accentColor.opacity(0.16) : Color.clear)
+                            .background(selectedDeviceID == device.id ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.03))
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                             .contextMenu {
                                 Button("Editar") {
@@ -181,14 +197,21 @@ struct TerminalView: View {
                             .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
                         }
                         .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
                     }
                     .frame(width: 300)
-                    .background(Color(NSColor.controlBackgroundColor))
+                    .background(
+                        LinearGradient(
+                            colors: [Color(NSColor.controlBackgroundColor), Color(NSColor.windowBackgroundColor)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
                     
                     Divider()
                 }
-                ZStack {
-                    Color.black
+                ZStack(alignment: .topLeading) {
+                    Color.black.opacity(0.95)
                     
                     
                     if manager.isConnected {
@@ -199,8 +222,24 @@ struct TerminalView: View {
                         terminalPlaceholder
                     }
                 }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .padding(10)
             }
         }
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(NSColor.windowBackgroundColor),
+                    Color(NSColor.windowBackgroundColor).opacity(0.92)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
         .navigationTitle("")
         .onAppear {
             reloadSavedDevices()
@@ -242,10 +281,11 @@ struct TerminalView: View {
                                         .frame(width: 7, height: 7)
                                     Text(tab.displayName)
                                         .lineLimit(1)
+                                        .font(.system(size: 12, weight: .medium))
                                 }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
-                                .background(selectedTabID == tab.id ? Color.blue.opacity(0.22) : Color.secondary.opacity(0.12))
+                                .background(selectedTabID == tab.id ? Color.blue.opacity(0.26) : Color.secondary.opacity(0.1))
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
                             .buttonStyle(.plain)
@@ -255,6 +295,7 @@ struct TerminalView: View {
                             } label: {
                                 Image(systemName: "xmark")
                                     .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(.secondary)
                             }
                             .buttonStyle(.plain)
                         }
@@ -268,7 +309,11 @@ struct TerminalView: View {
                 Label("Nova Aba", systemImage: "plus")
             }
             .buttonStyle(.bordered)
+            .controlSize(.small)
         }
+        .padding(8)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
     
     private var terminalPlaceholder: some View {
@@ -393,8 +438,7 @@ struct TerminalView: View {
         host = device.host
         port = device.port
         username = device.username
-        let normalizedCredentialID = normalizedCredentialID(for: device)
-        savedPassword = TerminalPasswordStore.readPassword(credentialID: normalizedCredentialID) ?? ""
+        savedPassword = resolvePassword(for: device)
         if connectionType == .serial {
             availableSerialPorts = manager.getAvailableSerialPorts()
             if !availableSerialPorts.contains(host), !host.isEmpty {
@@ -450,10 +494,12 @@ struct TerminalView: View {
         persistSavedDevicesCache()
         
         if payload.password.isEmpty {
-            TerminalPasswordStore.deletePassword(credentialID: credentialID)
+            credentialCandidates(for: entry).forEach { TerminalPasswordStore.deletePassword(credentialID: $0) }
         } else {
-            let saved = TerminalPasswordStore.savePassword(payload.password, credentialID: credentialID)
-            if !saved {
+            let allSaved = credentialCandidates(for: entry).allSatisfy { candidateID in
+                TerminalPasswordStore.savePassword(payload.password, credentialID: candidateID)
+            }
+            if !allSaved {
                 manager.logs += "\n[Credential Save Error]\n"
             }
         }
@@ -463,7 +509,7 @@ struct TerminalView: View {
     }
     
     private func deleteDevice(_ device: TerminalDeviceEntry) {
-        TerminalPasswordStore.deletePassword(credentialID: device.credentialID)
+        credentialCandidates(for: device).forEach { TerminalPasswordStore.deletePassword(credentialID: $0) }
         savedDevices.removeAll { $0.id == device.id }
         persistSavedDevicesCache()
         
@@ -560,6 +606,51 @@ struct TerminalView: View {
     private func normalizedCredentialID(for entry: TerminalDeviceEntry) -> String {
         let trimmed = entry.credentialID.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "\(entry.connectionType)|\(entry.host)|\(entry.port)|\(entry.username)" : trimmed
+    }
+    
+    private func resolvePassword(for entry: TerminalDeviceEntry) -> String {
+        let primaryID = normalizedCredentialID(for: entry)
+        for candidateID in credentialCandidates(for: entry) {
+            guard let password = TerminalPasswordStore.readPassword(credentialID: candidateID),
+                  !password.isEmpty else { continue }
+            if candidateID != primaryID {
+                _ = TerminalPasswordStore.savePassword(password, credentialID: primaryID)
+            }
+            return password
+        }
+        return ""
+    }
+    
+    private func credentialCandidates(for entry: TerminalDeviceEntry) -> [String] {
+        let primaryID = normalizedCredentialID(for: entry)
+        let host = entry.host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let user = entry.username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let type = entry.connectionType.trimmingCharacters(in: .whitespacesAndNewlines)
+        let port = entry.port.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hostLower = host.lowercased()
+        
+        var candidates = [
+            primaryID,
+            "\(type)|\(host)|\(port)|\(user)",
+            "\(host)|\(port)|\(user)",
+            "\(host)|\(user)"
+        ]
+        
+        if !hostLower.isEmpty {
+            candidates.append("\(type)|\(hostLower)|\(port)|\(user)")
+            candidates.append("\(hostLower)|\(port)|\(user)")
+            candidates.append("\(hostLower)|\(user)")
+        }
+        
+        var unique: [String] = []
+        for candidate in candidates {
+            let value = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            if value.isEmpty { continue }
+            if !unique.contains(value) {
+                unique.append(value)
+            }
+        }
+        return unique
     }
 }
 
@@ -693,58 +784,18 @@ private struct TerminalDeviceFormSheet: View {
 }
 
 private enum TerminalPasswordStore {
-    private static let service = "br.com.myrouter.xnet.terminal.password"
+    private static let keyPrefix = "br.com.myrouter.xnet.terminal.password."
     
     static func savePassword(_ password: String, credentialID: String) -> Bool {
-        guard let data = password.data(using: .utf8) else { return false }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: credentialID,
-            kSecValueData as String: data
-        ]
-        let addStatus = SecItemAdd(query as CFDictionary, nil)
-        if addStatus == errSecSuccess {
-            return true
-        }
-        if addStatus == errSecDuplicateItem {
-            let matchQuery: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: credentialID
-            ]
-            let attrs: [String: Any] = [kSecValueData as String: data]
-            let updateStatus = SecItemUpdate(matchQuery as CFDictionary, attrs as CFDictionary)
-            return updateStatus == errSecSuccess
-        }
-        return false
+        UserDefaults.standard.set(password, forKey: keyPrefix + credentialID)
+        return true
     }
     
     static func readPassword(credentialID: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: credentialID,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess,
-              let data = item as? Data,
-              let password = String(data: data, encoding: .utf8) else {
-            return nil
-        }
-        return password
+        UserDefaults.standard.string(forKey: keyPrefix + credentialID)
     }
     
     static func deletePassword(credentialID: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: credentialID
-        ]
-        SecItemDelete(query as CFDictionary)
+        UserDefaults.standard.removeObject(forKey: keyPrefix + credentialID)
     }
 }
