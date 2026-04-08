@@ -29,6 +29,7 @@ struct TerminalView: View {
     @State private var exportDocument = TerminalDeviceRegistryDocument()
     @State private var exportFilename = "xnet-dispositivos.json"
     @State private var importExportMessage: String?
+    @State private var selectedThemeID = TerminalThemeStore.readThemeID()
     
     enum ConnectionType: String, CaseIterable, Identifiable {
         case ssh = "SSH", telnet = "Telnet", serial = "Serial"
@@ -44,13 +45,14 @@ struct TerminalView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Shell Terminal")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundStyle(selectedTheme.foregroundColor)
                         HStack(spacing: 8) {
                             Image(systemName: manager.isConnected ? "waveform.path.ecg" : "bolt.horizontal")
                                 .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(manager.isConnected ? .green : .secondary)
+                                .foregroundStyle(manager.isConnected ? .green : selectedTheme.mutedColor)
                             Text(manager.isConnected ? "Sessão ativa via \(connectionType.rawValue)" : "Pronto para conectar")
                                 .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(selectedTheme.mutedColor)
                         }
                     }
                     
@@ -130,17 +132,24 @@ struct TerminalView: View {
                             .frame(width: 100)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(manager.isConnected ? .red : .blue)
+                        .tint(manager.isConnected ? .red : selectedTheme.accentColor)
                         .disabled(host.isEmpty && connectionType != .serial)
                         .controlSize(.small)
                     }
                 }
                 
+                themeSelector
             }
             .padding(.horizontal, 28)
             .padding(.top, 32)
             .padding(.bottom, 16)
-            .background(Color(NSColor.windowBackgroundColor))
+            .background(
+                LinearGradient(
+                    colors: [selectedTheme.chromeTopColor, selectedTheme.chromeBottomColor],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
             
             Divider()
                 
@@ -150,12 +159,13 @@ struct TerminalView: View {
                         HStack {
                             Text("Dispositivos Salvos")
                                 .font(.headline)
+                                .foregroundStyle(selectedTheme.foregroundColor)
                             Text("\(savedDevices.count)")
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(selectedTheme.mutedColor)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 3)
-                                .background(Color.primary.opacity(0.08))
+                                .background(selectedTheme.cardBackgroundColor.opacity(selectedTheme.isLight ? 0.95 : 0.68))
                                 .clipShape(Capsule())
                             Spacer()
                             Button {
@@ -185,13 +195,14 @@ struct TerminalView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "magnifyingglass")
                                 .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(selectedTheme.mutedColor)
                             TextField("Buscar host, IP ou usuário", text: $deviceSearch)
                                 .textFieldStyle(.plain)
+                                .foregroundStyle(selectedTheme.foregroundColor)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
-                        .background(Color.primary.opacity(0.06))
+                        .background(selectedTheme.cardBackgroundColor.opacity(selectedTheme.isLight ? 0.95 : 0.6))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .padding(.horizontal, 12)
                         .padding(.top, 10)
@@ -205,24 +216,25 @@ struct TerminalView: View {
                                         } label: {
                                             HStack(spacing: 8) {
                                                 Image(systemName: expandedGroups.contains(groupItem.group) ? "folder.fill" : "folder")
-                                                    .foregroundStyle(.secondary)
+                                                    .foregroundStyle(selectedTheme.mutedColor)
                                                 Text(groupItem.group)
                                                     .font(.system(size: 12, weight: .semibold))
+                                                    .foregroundStyle(selectedTheme.foregroundColor)
                                                 Text("\(groupItem.devices.count)")
                                                     .font(.system(size: 10, weight: .semibold))
-                                                    .foregroundStyle(.secondary)
+                    .foregroundStyle(selectedTheme.mutedColor)
                                                     .padding(.horizontal, 7)
                                                     .padding(.vertical, 2)
-                                                    .background(Color.primary.opacity(0.08))
+                    .background(selectedTheme.cardBackgroundColor.opacity(selectedTheme.isLight ? 0.9 : 0.7))
                                                     .clipShape(Capsule())
                                                 Spacer()
                                                 Image(systemName: expandedGroups.contains(groupItem.group) ? "chevron.down" : "chevron.right")
                                                     .font(.system(size: 10, weight: .semibold))
-                                                    .foregroundStyle(.secondary)
+                    .foregroundStyle(selectedTheme.mutedColor)
                                             }
                                             .padding(.horizontal, 10)
                                             .padding(.vertical, 7)
-                                            .background(Color.primary.opacity(0.05))
+            .background(selectedTheme.cardBackgroundColor.opacity(selectedTheme.isLight ? 0.9 : 0.52))
                                             .clipShape(RoundedRectangle(cornerRadius: 8))
                                         }
                                         .buttonStyle(.plain)
@@ -244,7 +256,7 @@ struct TerminalView: View {
                     .frame(width: 300)
                     .background(
                         LinearGradient(
-                            colors: [Color(NSColor.controlBackgroundColor), Color(NSColor.windowBackgroundColor)],
+                            colors: [selectedTheme.sidebarTopColor, selectedTheme.sidebarBottomColor],
                             startPoint: .top,
                             endPoint: .bottom
                         )
@@ -253,11 +265,11 @@ struct TerminalView: View {
                     Divider()
                 }
                 ZStack(alignment: .topLeading) {
-                    Color.black.opacity(0.95)
+                    selectedTheme.backgroundColor
                     
                     
                     if manager.isConnected {
-                        InteractiveTerminalTextView(text: $manager.logs) { input in
+                        InteractiveTerminalTextView(text: $manager.logs, theme: selectedTheme) { input in
                             manager.sendRaw(input)
                         }
                     } else {
@@ -266,7 +278,7 @@ struct TerminalView: View {
                 }
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        .stroke(selectedTheme.panelBorderColor.opacity(selectedTheme.isLight ? 0.65 : 0.7), lineWidth: 1)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .padding(10)
@@ -275,8 +287,8 @@ struct TerminalView: View {
         .background(
             LinearGradient(
                 colors: [
-                    Color(NSColor.windowBackgroundColor),
-                    Color(NSColor.windowBackgroundColor).opacity(0.92)
+                    selectedTheme.chromeTopColor,
+                    selectedTheme.chromeBottomColor
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -303,6 +315,9 @@ struct TerminalView: View {
         .onChange(of: savedPassword) { _, _ in saveCurrentTabState() }
         .onChange(of: deviceSearch) { _, _ in
             refreshExpandedGroups()
+        }
+        .onChange(of: selectedThemeID) { _, newValue in
+            TerminalThemeStore.saveThemeID(newValue)
         }
         .sheet(isPresented: $showingDeviceForm) {
             TerminalDeviceFormSheet(deviceToEdit: editingDevice, availableGroups: formGroupOptions) { payload in
@@ -344,6 +359,10 @@ struct TerminalView: View {
         }
     }
 
+    private var selectedTheme: TerminalTheme {
+        TerminalTheme(rawValue: selectedThemeID) ?? .defaultTheme
+    }
+
     private var tabBar: some View {
         HStack(spacing: 8) {
             ScrollView(.horizontal, showsIndicators: false) {
@@ -362,10 +381,11 @@ struct TerminalView: View {
                                     Text(tab.displayName)
                                         .lineLimit(1)
                                         .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(selectedTheme.foregroundColor)
                                 }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
-                                .background(selectedTabID == tab.id ? Color.blue.opacity(0.26) : Color.secondary.opacity(0.1))
+                                .background(selectedTabID == tab.id ? selectedTheme.accentColor.opacity(selectedTheme.isLight ? 0.18 : 0.24) : selectedTheme.cardBackgroundColor.opacity(selectedTheme.isLight ? 0.82 : 0.58))
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
                             .buttonStyle(.plain)
@@ -375,7 +395,7 @@ struct TerminalView: View {
                             } label: {
                                 Image(systemName: "xmark")
                                     .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(selectedTheme.mutedColor)
                             }
                             .buttonStyle(.plain)
                         }
@@ -392,18 +412,117 @@ struct TerminalView: View {
             .controlSize(.small)
         }
         .padding(8)
-        .background(Color.primary.opacity(0.05))
+        .background(selectedTheme.cardBackgroundColor.opacity(selectedTheme.isLight ? 0.9 : 0.52))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(selectedTheme.panelBorderColor.opacity(selectedTheme.isLight ? 0.4 : 0.5), lineWidth: 1)
+        )
+    }
+
+    private var themeSelector: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Temas do Terminal", systemImage: "paintpalette")
+                    .font(.headline)
+                    .foregroundStyle(selectedTheme.foregroundColor)
+                Spacer()
+                Text(selectedTheme.displayName)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(selectedTheme.accentColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(selectedTheme.accentColor.opacity(selectedTheme.isLight ? 0.12 : 0.16))
+                    .clipShape(Capsule())
+            }
+            
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(TerminalTheme.allCases) { theme in
+                        Button {
+                            selectedThemeID = theme.rawValue
+                        } label: {
+                            VStack(alignment: .leading, spacing: 10) {
+                                themePreview(theme)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(theme.displayName)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(selectedTheme.foregroundColor)
+                                        .lineLimit(1)
+                                    Text(theme.appearanceLabel)
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundStyle(selectedTheme.mutedColor)
+                                }
+                            }
+                            .padding(12)
+                            .frame(width: 170, alignment: .leading)
+                            .background(
+                                selectedThemeID == theme.rawValue
+                                ? selectedTheme.accentColor.opacity(selectedTheme.isLight ? 0.16 : 0.18)
+                                : selectedTheme.cardBackgroundColor.opacity(selectedTheme.isLight ? 0.88 : 0.6)
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(selectedThemeID == theme.rawValue ? selectedTheme.accentColor.opacity(0.95) : selectedTheme.panelBorderColor.opacity(selectedTheme.isLight ? 0.4 : 0.55), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+        }
+        .padding(16)
+        .background(selectedTheme.cardBackgroundColor.opacity(selectedTheme.isLight ? 0.92 : 0.62))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(selectedTheme.panelBorderColor.opacity(selectedTheme.isLight ? 0.4 : 0.55), lineWidth: 1)
+        )
+    }
+    
+    private func themePreview(_ theme: TerminalTheme) -> some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(theme.backgroundColor)
+            
+            VStack(alignment: .leading, spacing: 6) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(theme.accentColor)
+                    .frame(width: 80, height: 8)
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(theme.foregroundColor.opacity(theme.isLight ? 0.8 : 0.72))
+                    .frame(width: 110, height: 5)
+                
+                HStack(spacing: 5) {
+                    ForEach(Array(theme.previewSwatches.enumerated()), id: \.offset) { item in
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(item.element)
+                            .frame(width: item.offset == 0 ? 24 : 17, height: 6)
+                    }
+                }
+            }
+            .padding(10)
+        }
+        .frame(height: 72)
+        .overlay(alignment: .topTrailing) {
+            Circle()
+                .fill(theme.cursorColor)
+                .frame(width: 8, height: 8)
+                .padding(8)
+        }
     }
     
     private var terminalPlaceholder: some View {
         VStack(spacing: 20) {
             Image(systemName: "powershell")
                 .font(.system(size: 40))
-                .foregroundStyle(.secondary.opacity(0.3))
+                .foregroundStyle(selectedTheme.foregroundColor.opacity(0.28))
             Text("Ready to connect...")
                 .font(.system(.body, design: .monospaced))
-                .foregroundStyle(.secondary.opacity(0.5))
+                .foregroundStyle(selectedTheme.foregroundColor.opacity(0.54))
         }
     }
 
@@ -954,23 +1073,24 @@ struct TerminalView: View {
         HStack(spacing: 10) {
             ZStack {
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.blue.opacity(0.22))
+                    .fill(selectedTheme.accentColor.opacity(selectedTheme.isLight ? 0.16 : 0.24))
                     .frame(width: 28, height: 28)
                 Image(systemName: "terminal")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(selectedTheme.accentColor)
             }
             
             VStack(alignment: .leading, spacing: 3) {
                 Text(device.name)
                     .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(selectedTheme.foregroundColor)
                     .lineLimit(1)
                 Text("\(device.connectionType.lowercased()), \(device.username.isEmpty ? "sem user" : device.username)")
                     .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(selectedTheme.mutedColor)
                 Text("\(device.host):\(device.port)")
                     .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(selectedTheme.mutedColor)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1004,11 +1124,11 @@ struct TerminalView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(selectedDeviceID == device.id ? Color.accentColor.opacity(0.2) : Color.white.opacity(0.03))
+        .background(selectedDeviceID == device.id ? selectedTheme.accentColor.opacity(selectedTheme.isLight ? 0.14 : 0.18) : selectedTheme.cardBackgroundColor.opacity(selectedTheme.isLight ? 0.82 : 0.32))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(selectedDeviceID == device.id ? Color.accentColor.opacity(0.45) : Color.white.opacity(0.06), lineWidth: 1)
+                .stroke(selectedDeviceID == device.id ? selectedTheme.accentColor.opacity(0.55) : selectedTheme.panelBorderColor.opacity(selectedTheme.isLight ? 0.3 : 0.45), lineWidth: 1)
         )
         .contextMenu {
             Button("Editar") {
@@ -1323,6 +1443,18 @@ private enum TerminalPasswordStore {
 
 private enum TerminalDeviceGroupStore {
     static let storageKey = "terminal.group.cache.v1"
+}
+
+private enum TerminalThemeStore {
+    static let storageKey = "terminal.theme.selected.v1"
+    
+    static func readThemeID() -> String {
+        UserDefaults.standard.string(forKey: storageKey) ?? TerminalTheme.defaultTheme.rawValue
+    }
+    
+    static func saveThemeID(_ themeID: String) {
+        UserDefaults.standard.set(themeID, forKey: storageKey)
+    }
 }
 
 private struct TerminalDeviceRegistryPayload: Codable {
