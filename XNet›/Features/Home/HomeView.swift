@@ -6,8 +6,13 @@ import IOKit.ps
 struct HomeView: View {
     @State private var dashboardData = DashboardData()
     @State private var isRefreshing = false
+    @State private var selectedThemeID = TerminalThemeStore.readThemeID()
     
     let timer = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
+    
+    private var selectedTheme: TerminalTheme {
+        TerminalTheme(rawValue: selectedThemeID) ?? .defaultTheme
+    }
     
     var body: some View {
         ScrollView {
@@ -108,8 +113,8 @@ struct HomeView: View {
         .background(
             LinearGradient(
                 colors: [
-                    Color(NSColor.windowBackgroundColor),
-                    Color.blue.opacity(0.03)
+                    selectedTheme.chromeTopColor,
+                    selectedTheme.chromeBottomColor
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -117,6 +122,13 @@ struct HomeView: View {
         )
         .onAppear { refreshAll() }
         .onReceive(timer) { _ in refreshAll() }
+        .onReceive(NotificationCenter.default.publisher(for: TerminalThemeStore.didChangeNotification)) { output in
+            if let themeID = output.object as? String {
+                selectedThemeID = themeID
+            } else {
+                selectedThemeID = TerminalThemeStore.readThemeID()
+            }
+        }
     }
     
     private var dashboardHero: some View {
@@ -125,9 +137,10 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Painel de Controle")
                         .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .foregroundStyle(selectedTheme.foregroundColor)
                     Text("Monitoramento em tempo real do sistema, conectividade e tráfego da rede.")
                         .font(.title3)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(selectedTheme.mutedColor)
                 }
                 
                 Spacer()
@@ -148,9 +161,9 @@ struct HomeView: View {
         .background(
             LinearGradient(
                 colors: [
-                    Color.blue.opacity(0.14),
-                    Color.purple.opacity(0.1),
-                    Color(NSColor.textBackgroundColor)
+                    selectedTheme.accentColor.opacity(selectedTheme.isLight ? 0.1 : 0.16),
+                    selectedTheme.panelBorderColor.opacity(selectedTheme.isLight ? 0.1 : 0.16),
+                    selectedTheme.cardBackgroundColor
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -159,7 +172,7 @@ struct HomeView: View {
         .clipShape(RoundedRectangle(cornerRadius: 24))
         .overlay(
             RoundedRectangle(cornerRadius: 24)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .stroke(selectedTheme.panelBorderColor.opacity(selectedTheme.isLight ? 0.35 : 0.45), lineWidth: 1)
         )
     }
     
@@ -167,9 +180,10 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.title2.bold())
+                .foregroundStyle(selectedTheme.foregroundColor)
             Text(subtitle)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(selectedTheme.mutedColor)
         }
     }
     
@@ -196,6 +210,10 @@ struct MetricCard: View {
     let color: Color
     var emphasis: Double? = nil
     
+    private var theme: TerminalTheme {
+        TerminalTheme(rawValue: TerminalThemeStore.readThemeID()) ?? .defaultTheme
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
@@ -220,19 +238,20 @@ struct MetricCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.mutedColor)
                 Text(value)
                     .font(.title3.bold())
+                    .foregroundStyle(theme.foregroundColor)
                 Text(detail)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.mutedColor)
             }
             
             if let emphasis {
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
                         Capsule()
-                            .fill(Color.primary.opacity(0.08))
+                            .fill(theme.panelBorderColor.opacity(theme.isLight ? 0.18 : 0.28))
                         Capsule()
                             .fill(color.gradient)
                             .frame(width: max(12, proxy.size.width * min(max(emphasis, 0), 1)))
@@ -243,11 +262,11 @@ struct MetricCard: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(NSColor.textBackgroundColor))
+        .background(theme.cardBackgroundColor.opacity(theme.isLight ? 0.94 : 0.68))
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .overlay(
             RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                .stroke(theme.panelBorderColor.opacity(theme.isLight ? 0.35 : 0.45), lineWidth: 1)
         )
     }
 }
@@ -259,6 +278,10 @@ struct NetworkHighlightCard: View {
     let icon: String
     let color: Color
     
+    private var theme: TerminalTheme {
+        TerminalTheme(rawValue: TerminalThemeStore.readThemeID()) ?? .defaultTheme
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
@@ -267,7 +290,7 @@ struct NetworkHighlightCard: View {
                     .font(.headline.weight(.bold))
                 Text(title)
                     .font(.headline.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.mutedColor)
                 Spacer()
                 Circle()
                     .fill(color.opacity(0.8))
@@ -275,15 +298,16 @@ struct NetworkHighlightCard: View {
             }
             Text(value)
                 .font(.system(size: 22, weight: .bold, design: .monospaced))
+                .foregroundStyle(theme.foregroundColor)
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
             Text(footnote)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.mutedColor)
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(NSColor.textBackgroundColor))
+        .background(theme.cardBackgroundColor.opacity(theme.isLight ? 0.94 : 0.68))
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .overlay(
             RoundedRectangle(cornerRadius: 20)
@@ -297,16 +321,21 @@ struct InfoRow: View {
     let value: String
     let icon: String
     
+    private var theme: TerminalTheme {
+        TerminalTheme(rawValue: TerminalThemeStore.readThemeID()) ?? .defaultTheme
+    }
+    
     var body: some View {
         HStack(spacing: 16) {
             Image(systemName: icon)
                 .frame(width: 28, height: 28)
-                .foregroundStyle(.blue)
+                .foregroundStyle(theme.accentColor)
             Text(label)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.mutedColor)
             Spacer()
             Text(value)
                 .bold()
+                .foregroundStyle(theme.foregroundColor)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -326,6 +355,10 @@ struct DetailPanel<Content: View>: View {
         self.content = content()
     }
     
+    private var theme: TerminalTheme {
+        TerminalTheme(rawValue: TerminalThemeStore.readThemeID()) ?? .defaultTheme
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
@@ -333,16 +366,17 @@ struct DetailPanel<Content: View>: View {
                     .foregroundStyle(color)
                 Text(title)
                     .font(.headline)
+                    .foregroundStyle(theme.foregroundColor)
                 Spacer()
             }
             content
         }
         .padding(18)
-        .background(Color(NSColor.textBackgroundColor).opacity(0.85))
+        .background(theme.cardBackgroundColor.opacity(theme.isLight ? 0.9 : 0.7))
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .overlay(
             RoundedRectangle(cornerRadius: 20)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                .stroke(theme.panelBorderColor.opacity(theme.isLight ? 0.35 : 0.45), lineWidth: 1)
         )
     }
 }
@@ -352,18 +386,22 @@ struct HeroBadge: View {
     let value: String
     let color: Color
     
+    private var theme: TerminalTheme {
+        TerminalTheme(rawValue: TerminalThemeStore.readThemeID()) ?? .defaultTheme
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.mutedColor)
             Text(value)
                 .font(.subheadline.bold())
                 .foregroundStyle(color)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color(NSColor.textBackgroundColor).opacity(0.8))
+        .background(theme.cardBackgroundColor.opacity(theme.isLight ? 0.88 : 0.68))
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 }
@@ -373,6 +411,10 @@ struct HeroInfoCard: View {
     let value: String
     let icon: String
     let color: Color
+    
+    private var theme: TerminalTheme {
+        TerminalTheme(rawValue: TerminalThemeStore.readThemeID()) ?? .defaultTheme
+    }
     
     var body: some View {
         HStack(spacing: 12) {
@@ -385,16 +427,17 @@ struct HeroInfoCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.mutedColor)
                 Text(value)
                     .font(.subheadline.bold())
+                    .foregroundStyle(theme.foregroundColor)
                     .lineLimit(1)
             }
             Spacer()
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(NSColor.textBackgroundColor).opacity(0.75))
+        .background(theme.cardBackgroundColor.opacity(theme.isLight ? 0.88 : 0.64))
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }
@@ -404,6 +447,10 @@ struct StatusPill: View {
     let value: String
     let color: Color
     
+    private var theme: TerminalTheme {
+        TerminalTheme(rawValue: TerminalThemeStore.readThemeID()) ?? .defaultTheme
+    }
+    
     var body: some View {
         HStack {
             HStack(spacing: 8) {
@@ -412,15 +459,16 @@ struct StatusPill: View {
                     .frame(width: 8, height: 8)
                 Text(label)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.mutedColor)
             }
             Spacer()
             Text(value)
                 .font(.caption.bold())
+                .foregroundStyle(theme.foregroundColor)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color.primary.opacity(0.04))
+        .background(theme.cardBackgroundColor.opacity(theme.isLight ? 0.82 : 0.45))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
