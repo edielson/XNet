@@ -19,6 +19,7 @@ struct TerminalView: View {
     @State private var isDeviceListVisible = true
     @State private var tabs: [TerminalTabItem] = []
     @State private var selectedTabID: UUID? = nil
+    @State private var deviceSearch = ""
     
     enum ConnectionType: String, CaseIterable, Identifiable {
         case ssh = "SSH", telnet = "Telnet", serial = "Serial"
@@ -127,77 +128,116 @@ struct TerminalView: View {
                                 .background(Color.primary.opacity(0.08))
                                 .clipShape(Capsule())
                             Spacer()
+                            Button {
+                                editingDevice = nil
+                                showingDeviceForm = true
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.mini)
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
                         
                         Divider()
                         
-                        List(savedDevices, selection: $selectedDeviceID) { device in
-                            HStack(spacing: 10) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(device.name)
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .lineLimit(1)
-                                    Text(device.connectionType)
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundStyle(.blue)
-                                    Text("\(device.host):\(device.port)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    selectedDeviceID = device.id
-                                }
-                                
-                                HStack(spacing: 6) {
-                                    Button {
-                                        selectedDeviceID = device.id
-                                        editingDevice = device
-                                        showingDeviceForm = true
-                                    } label: {
-                                        Image(systemName: "square.and.pencil")
-                                            .font(.system(size: 11, weight: .semibold))
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.mini)
-                                    
-                                    Button {
-                                        selectedDeviceID = device.id
-                                        openDeviceInNewTab(device)
-                                    } label: {
-                                        Image(systemName: "terminal.fill")
-                                            .font(.system(size: 11, weight: .semibold))
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .controlSize(.mini)
-                                }
-                            }
-                            .padding(.vertical, 6)
-                            .padding(.horizontal, 4)
-                            .background(selectedDeviceID == device.id ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.03))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .contextMenu {
-                                Button("Editar") {
-                                    selectedDeviceID = device.id
-                                    editingDevice = device
-                                    showingDeviceForm = true
-                                }
-                                Button("Conectar") {
-                                    selectedDeviceID = device.id
-                                    openDeviceInNewTab(device)
-                                }
-                                Button("Excluir", role: .destructive) {
-                                    deleteDevice(device)
-                                }
-                            }
-                            .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            TextField("Buscar host, IP ou usuário", text: $deviceSearch)
+                                .textFieldStyle(.plain)
                         }
-                        .listStyle(.plain)
-                        .scrollContentBackground(.hidden)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding(.horizontal, 12)
+                        .padding(.top, 10)
+                        
+                        ScrollView {
+                            LazyVStack(spacing: 8) {
+                                ForEach(filteredSavedDevices) { device in
+                                    HStack(spacing: 10) {
+                                        ZStack {
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(Color.blue.opacity(0.22))
+                                                .frame(width: 28, height: 28)
+                                            Image(systemName: "terminal")
+                                                .font(.system(size: 12, weight: .semibold))
+                                                .foregroundStyle(.blue)
+                                        }
+                                        
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(device.name)
+                                                .font(.system(size: 12, weight: .semibold))
+                                                .lineLimit(1)
+                                            Text("\(device.connectionType.lowercased()), \(device.username.isEmpty ? "sem user" : device.username)")
+                                                .font(.system(size: 10))
+                                                .foregroundStyle(.secondary)
+                                            Text("\(device.host):\(device.port)")
+                                                .font(.system(size: 10))
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            selectedDeviceID = device.id
+                                        }
+                                        
+                                        HStack(spacing: 4) {
+                                            Button {
+                                                selectedDeviceID = device.id
+                                                editingDevice = device
+                                                showingDeviceForm = true
+                                            } label: {
+                                                Image(systemName: "square.and.pencil")
+                                                    .font(.system(size: 10, weight: .bold))
+                                            }
+                                            .buttonStyle(.bordered)
+                                            .controlSize(.mini)
+                                            
+                                            Button {
+                                                selectedDeviceID = device.id
+                                                openDeviceInNewTab(device)
+                                            } label: {
+                                                Image(systemName: "play.fill")
+                                                    .font(.system(size: 10, weight: .bold))
+                                            }
+                                            .buttonStyle(.borderedProminent)
+                                            .controlSize(.mini)
+                                        }
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
+                                    .background(selectedDeviceID == device.id ? Color.accentColor.opacity(0.2) : Color.white.opacity(0.03))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(selectedDeviceID == device.id ? Color.accentColor.opacity(0.45) : Color.white.opacity(0.06), lineWidth: 1)
+                                    )
+                                    .contextMenu {
+                                        Button("Editar") {
+                                            selectedDeviceID = device.id
+                                            editingDevice = device
+                                            showingDeviceForm = true
+                                        }
+                                        Button("Conectar") {
+                                            selectedDeviceID = device.id
+                                            openDeviceInNewTab(device)
+                                        }
+                                        Button("Excluir", role: .destructive) {
+                                            deleteDevice(device)
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 10)
+                        }
                     }
                     .frame(width: 300)
                     .background(
@@ -430,6 +470,17 @@ struct TerminalView: View {
     private var selectedDevice: TerminalDeviceEntry? {
         guard let selectedDeviceID else { return nil }
         return savedDevices.first(where: { $0.id == selectedDeviceID })
+    }
+    
+    private var filteredSavedDevices: [TerminalDeviceEntry] {
+        let term = deviceSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else { return savedDevices }
+        return savedDevices.filter {
+            $0.name.localizedCaseInsensitiveContains(term)
+            || $0.host.localizedCaseInsensitiveContains(term)
+            || $0.username.localizedCaseInsensitiveContains(term)
+            || $0.connectionType.localizedCaseInsensitiveContains(term)
+        }
     }
     
     private func applyDevice(_ device: TerminalDeviceEntry) {

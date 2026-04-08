@@ -119,7 +119,9 @@ struct InteractiveTerminalTextView: NSViewRepresentable {
             return
         }
         
-        for value in values {
+        var i = 0
+        while i < values.count {
+            let value = values[i]
             switch value {
             case 0:
                 fg = NSColor.white.withAlphaComponent(0.9)
@@ -141,20 +143,85 @@ struct InteractiveTerminalTextView: NSViewRepresentable {
                 bg = ansiColor(for: value - 100, bright: true)
             case 49:
                 bg = NSColor.black
+            case 38:
+                if i + 1 < values.count {
+                    let mode = values[i + 1]
+                    if mode == 5, i + 2 < values.count {
+                        fg = ansi256Color(values[i + 2])
+                        i += 2
+                    } else if mode == 2, i + 4 < values.count {
+                        let r = values[i + 2]
+                        let g = values[i + 3]
+                        let b = values[i + 4]
+                        fg = rgbColor(r: r, g: g, b: b)
+                        i += 4
+                    }
+                }
+            case 48:
+                if i + 1 < values.count {
+                    let mode = values[i + 1]
+                    if mode == 5, i + 2 < values.count {
+                        bg = ansi256Color(values[i + 2])
+                        i += 2
+                    } else if mode == 2, i + 4 < values.count {
+                        let r = values[i + 2]
+                        let g = values[i + 3]
+                        let b = values[i + 4]
+                        bg = rgbColor(r: r, g: g, b: b)
+                        i += 4
+                    }
+                }
             default:
                 break
             }
+            i += 1
         }
     }
     
     private func ansiColor(for index: Int, bright: Bool) -> NSColor {
         let base: [(CGFloat, CGFloat, CGFloat)] = bright
-        ? [(0.35, 0.35, 0.35), (1.00, 0.40, 0.40), (0.45, 0.95, 0.45), (1.00, 0.88, 0.35), (0.45, 0.62, 1.00), (1.00, 0.50, 0.95), (0.45, 0.95, 0.95), (0.95, 0.95, 0.95)]
-        : [(0.00, 0.00, 0.00), (0.80, 0.24, 0.24), (0.23, 0.73, 0.23), (0.80, 0.66, 0.20), (0.23, 0.46, 0.80), (0.74, 0.29, 0.71), (0.20, 0.72, 0.72), (0.78, 0.78, 0.78)]
+        ? [(0.33, 0.36, 0.39), (0.95, 0.37, 0.36), (0.58, 0.80, 0.39), (0.95, 0.76, 0.32), (0.38, 0.68, 0.94), (0.73, 0.54, 0.91), (0.34, 0.84, 0.83), (0.96, 0.96, 0.96)]
+        : [(0.10, 0.12, 0.16), (0.80, 0.25, 0.28), (0.43, 0.69, 0.29), (0.76, 0.60, 0.24), (0.36, 0.54, 0.85), (0.61, 0.43, 0.79), (0.29, 0.67, 0.67), (0.77, 0.79, 0.82)]
         
         guard index >= 0, index < base.count else { return NSColor.white.withAlphaComponent(0.9) }
         let (r, g, b) = base[index]
         return NSColor(calibratedRed: r, green: g, blue: b, alpha: 1.0)
+    }
+    
+    private func ansi256Color(_ value: Int) -> NSColor {
+        let code = max(0, min(255, value))
+        if code < 8 {
+            return ansiColor(for: code, bright: false)
+        }
+        if code < 16 {
+            return ansiColor(for: code - 8, bright: true)
+        }
+        if code >= 232 {
+            let level = CGFloat(code - 232) / 23.0
+            let v = 0.08 + (0.84 * level)
+            return NSColor(calibratedRed: v, green: v, blue: v, alpha: 1.0)
+        }
+        
+        let idx = code - 16
+        let r = idx / 36
+        let g = (idx % 36) / 6
+        let b = idx % 6
+        
+        func map(_ n: Int) -> CGFloat {
+            if n == 0 { return 0.0 }
+            return CGFloat(55 + n * 40) / 255.0
+        }
+        
+        return NSColor(calibratedRed: map(r), green: map(g), blue: map(b), alpha: 1.0)
+    }
+    
+    private func rgbColor(r: Int, g: Int, b: Int) -> NSColor {
+        NSColor(
+            calibratedRed: CGFloat(max(0, min(255, r))) / 255.0,
+            green: CGFloat(max(0, min(255, g))) / 255.0,
+            blue: CGFloat(max(0, min(255, b))) / 255.0,
+            alpha: 1.0
+        )
     }
 }
 

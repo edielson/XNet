@@ -20,14 +20,22 @@ class FTPConnectionManager {
     private var credentials = ""
     private var baseUrl = ""
     
-    func connect(host: String, port: String, user: String, pass: String, isSFTP: Bool) {
-        scheme = isSFTP ? "sftp" : "ftp"
+    func connect(host: String, port: String, user: String, pass: String, protocolType: TransferProtocolType) {
+        scheme = protocolType.rawValue
         // Safely escape username and password for curl
         // Process handles argument boundaries natively without shell escaping
         credentials = "\(user):\(pass)"
         baseUrl = "\(scheme)://\(host):\(port)"
         
         statusMessage = "Connecting to \(baseUrl)..."
+        
+        if protocolType == .scp {
+            isConnected = true
+            remoteCurrentPath = "/"
+            remoteFiles = []
+            statusMessage = "SCP ready on \(host). Directory listing unavailable."
+            return
+        }
         
         // Test connection by listing root
         remoteCurrentPath = "/"
@@ -108,8 +116,11 @@ class FTPConnectionManager {
         
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
-        // Create remote dirs if needed option: --ftp-create-dirs
-        process.arguments = ["-k", "-s", "-u", credentials, "--ftp-create-dirs", "-T", localPath, targetUrl]
+        if scheme == "ftp" {
+            process.arguments = ["-k", "-s", "-u", credentials, "--ftp-create-dirs", "-T", localPath, targetUrl]
+        } else {
+            process.arguments = ["-k", "-s", "-u", credentials, "-T", localPath, targetUrl]
+        }
         
         DispatchQueue.global().async {
             do {
@@ -119,7 +130,7 @@ class FTPConnectionManager {
                     self.isTransferring = false
                     if process.terminationStatus == 0 {
                         self.statusMessage = "Upload complete: \(filename)"
-                        if self.remoteCurrentPath == remoteFolder {
+                        if self.scheme != "scp", self.remoteCurrentPath == remoteFolder {
                             self.loadRemoteFiles()
                         }
                     } else {
@@ -268,4 +279,11 @@ class FTPConnectionManager {
         }
         return Date.distantPast
     }
+}
+
+enum TransferProtocolType: String, CaseIterable, Identifiable {
+    case sftp = "sftp"
+    case ftp = "ftp"
+    case scp = "scp"
+    var id: String { rawValue }
 }

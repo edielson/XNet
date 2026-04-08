@@ -5,16 +5,20 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import SwiftData
 
 struct FTPView: View {
+    @Environment(\.modelContext) private var modelContext
     @State private var connectionManager = FTPConnectionManager()
+    @State private var registeredDevices: [TerminalDevice] = []
     
     // Connection Settings
     @State private var host = ""
     @State private var port = "22"
     @State private var username = ""
     @State private var password = ""
-    @State private var isSFTP = true
+    @State private var transferProtocol: TransferProtocolType = .sftp
+    @State private var selectedCredentialID: String?
     
     var body: some View {
         VStack(spacing: 0) {
@@ -32,14 +36,20 @@ struct FTPView: View {
                     Spacer()
                     
                     HStack(spacing: 12) {
-                        Picker("", selection: $isSFTP) {
-                            Text("SFTP").tag(true)
-                            Text("FTP").tag(false)
+                        Picker("", selection: $transferProtocol) {
+                            Text("SFTP").tag(TransferProtocolType.sftp)
+                            Text("FTP").tag(TransferProtocolType.ftp)
+                            Text("SCP").tag(TransferProtocolType.scp)
                         }
                         .pickerStyle(.segmented)
-                        .frame(width: 120)
-                        .onChange(of: isSFTP) { _, newSFTP in
-                            port = newSFTP ? "22" : "21"
+                        .frame(width: 170)
+                        .onChange(of: transferProtocol) { _, newValue in
+                            switch newValue {
+                            case .sftp, .scp:
+                                port = "22"
+                            case .ftp:
+                                port = "21"
+                            }
                         }
                         
                         Button(action: toggleConnection) {
@@ -124,6 +134,52 @@ struct FTPView: View {
                         .cornerRadius(20)
                     }
                 }
+                
+                if !registeredDevices.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Text("Dispositivos Cadastrados")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Text("\(registeredDevices.count)")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background(Color.primary.opacity(0.08))
+                                .clipShape(Capsule())
+                        }
+                        
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(registeredDevices) { device in
+                                    Button {
+                                        applyDeviceToFTP(device)
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: protocolIcon(device))
+                                                .font(.system(size: 11, weight: .semibold))
+                                            VStack(alignment: .leading, spacing: 1) {
+                                                Text(device.name)
+                                                    .font(.system(size: 11, weight: .semibold))
+                                                    .lineLimit(1)
+                                                Text("\(device.host):\(device.port)")
+                                                    .font(.system(size: 10))
+                                                    .foregroundStyle(.secondary)
+                                                    .lineLimit(1)
+                                            }
+                                        }
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 7)
+                                        .background(selectedCredentialID == device.credentialID ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.05))
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                }
             }
             .padding(.horizontal, 28)
             .padding(.top, 32)
@@ -147,14 +203,49 @@ struct FTPView: View {
             .background(Color.black.opacity(0.02))
         }
         .navigationTitle("")
+        .onAppear {
+            loadRegisteredDevices()
+        }
     }
     
     private func toggleConnection() {
         if connectionManager.isConnected {
             connectionManager.disconnect()
         } else {
-            connectionManager.connect(host: host, port: port, user: username, pass: password, isSFTP: isSFTP)
+            connectionManager.connect(host: host, port: port, user: username, pass: password, protocolType: transferProtocol)
         }
+    }
+    
+    private func loadRegisteredDevices() {
+        let descriptor = FetchDescriptor<TerminalDevice>(sortBy: [SortDescriptor(\.name, order: .forward)])
+        registeredDevices = (try? modelContext.fetch(descriptor)) ?? []
+    }
+    
+    private func applyDeviceToFTP(_ device: TerminalDevice) {
+        selectedCredentialID = device.credentialID
+        host = device.host
+        username = device.username
+        password = FTPPasswordStore.readPassword(credentialID: device.credentialID) ?? ""
+        
+        let type = device.connectionType.uppercased()
+        if type.contains("SCP") {
+            transferProtocol = .scp
+            port = device.port.isEmpty ? "22" : device.port
+        } else if type.contains("FTP") && !type.contains("SFTP") {
+            transferProtocol = .ftp
+            port = device.port.isEmpty ? "21" : device.port
+        } else {
+            transferProtocol = .sftp
+            port = device.port.isEmpty ? "22" : device.port
+        }
+    }
+    
+    private func protocolIcon(_ device: TerminalDevice) -> String {
+        let type = device.connectionType.uppercased()
+        if type.contains("FTP") && !type.contains("SFTP") {
+            return "externaldrive.connected.to.line.below"
+        }
+        return "lock.shield"
     }
 }
 
@@ -508,5 +599,13 @@ struct RemoteFileBrowser: View {
 extension View {
     func onItemDoubleClick(action: @escaping () -> Void) -> some View {
         self.onTapGesture(count: 2, perform: action)
+    }
+}
+
+private enum FTPPasswordStore {
+    private static let keyPrefix = "br.com.myrouter.xnet.terminal.password."
+    
+    static func readPassword(credentialID: String) -> String? {
+        UserDefaults.standard.string(forKey: keyPrefix + credentialID)
     }
 }
