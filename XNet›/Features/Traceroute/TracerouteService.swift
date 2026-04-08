@@ -103,10 +103,10 @@ class TracerouteService {
                         addr.sin_addr.s_addr = resolvedAddress
                         addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
                         
-                        let sent = withUnsafePointer(to: &addr) {
-                            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                        let sent = withUnsafePointer(to: &addr) { ptr in
+                            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
                                 packet.withUnsafeBytes { packetBytes in
-                                    Darwin.sendto(sockID, packetBytes.baseAddress, packet.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                                    Darwin.sendto(sockID, packetBytes.baseAddress, packet.count, 0, saPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
                                 }
                             }
                         }
