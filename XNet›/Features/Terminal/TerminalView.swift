@@ -30,6 +30,16 @@ struct TerminalView: View {
     @State private var exportFilename = "xnet-dispositivos.json"
     @State private var importExportMessage: String?
     @State private var selectedThemeID = TerminalThemeStore.readThemeID()
+    @State private var isThemeSelectorExpanded = false
+    @State private var savedSnippets: [TerminalSnippetEntry] = []
+    @State private var savedSessionLogs: [TerminalSessionLogEntry] = []
+    @State private var snippetSearch = ""
+    @State private var logSearch = ""
+    @State private var showingSnippetLibrary = false
+    @State private var showingLogHistory = false
+    @State private var editingSnippet: TerminalSnippetEntry?
+    @State private var sessionStartDates: [UUID: Date] = [:]
+    @State private var persistedLogSignatures: [UUID: String] = [:]
     
     enum ConnectionType: String, CaseIterable, Identifiable {
         case ssh = "SSH", telnet = "Telnet", serial = "Serial"
@@ -118,6 +128,33 @@ struct TerminalView: View {
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         
+                        Button {
+                            withAnimation(.spring(duration: 0.28)) {
+                                isThemeSelectorExpanded.toggle()
+                            }
+                        } label: {
+                            Label(isThemeSelectorExpanded ? "Ocultar Temas" : "Temas", systemImage: "paintpalette")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        
+                        Button {
+                            editingSnippet = nil
+                            showingSnippetLibrary = true
+                        } label: {
+                            Label("Snippets", systemImage: "terminal.textbox")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        
+                        Button {
+                            showingLogHistory = true
+                        } label: {
+                            Label("Logs", systemImage: "clock.arrow.circlepath")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        
                         Picker("", selection: $connectionType) {
                             ForEach(ConnectionType.allCases) { Text($0.rawValue).tag($0) }
                         }
@@ -138,7 +175,10 @@ struct TerminalView: View {
                     }
                 }
                 
-                themeSelector
+                if isThemeSelectorExpanded {
+                    themeSelector
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
             .padding(.horizontal, 28)
             .padding(.top, 32)
@@ -298,6 +338,8 @@ struct TerminalView: View {
         .onAppear {
             reloadSavedDevices()
             reloadSavedGroups()
+            reloadSnippets()
+            reloadSessionLogs()
             refreshExpandedGroups()
             if connectionType == .serial {
                 availableSerialPorts = manager.getAvailableSerialPorts()
@@ -328,6 +370,41 @@ struct TerminalView: View {
             TerminalDeviceGroupFormSheet { name in
                 createGroup(named: name)
             }
+        }
+        .sheet(isPresented: $showingSnippetLibrary) {
+            TerminalSnippetLibrarySheet(
+                snippets: filteredSnippets,
+                searchText: $snippetSearch,
+                canSend: manager.isConnected,
+                onAdd: {
+                    editingSnippet = nil
+                },
+                onEdit: { snippet in
+                    editingSnippet = snippet
+                },
+                onDelete: { snippet in
+                    deleteSnippet(snippet)
+                },
+                onSend: { snippet in
+                    sendSnippet(snippet)
+                },
+                onSave: { payload in
+                    saveSnippet(payload)
+                },
+                editingSnippet: editingSnippet
+            )
+        }
+        .sheet(isPresented: $showingLogHistory) {
+            TerminalLogHistorySheet(
+                logs: filteredSessionLogs,
+                searchText: $logSearch,
+                onDelete: { entry in
+                    deleteLogEntry(entry)
+                },
+                onClear: {
+                    clearSavedLogs()
+                }
+            )
         }
         .fileExporter(
             isPresented: $showingDeviceExporter,
