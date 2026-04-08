@@ -638,6 +638,8 @@ struct TerminalView: View {
         tabs[index].password = savedPassword
         tabs[index].availableSerialPorts = availableSerialPorts
         tabs[index].manager = manager
+        tabs[index].sessionStartedAt = sessionStartDates[selectedTabID]
+        tabs[index].persistedLogSignature = persistedLogSignatures[selectedTabID]
         let trimmedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedHost.isEmpty {
             tabs[index].name = trimmedHost
@@ -652,12 +654,16 @@ struct TerminalView: View {
         savedPassword = tab.password
         availableSerialPorts = tab.availableSerialPorts
         manager = tab.manager
+        sessionStartDates[tab.id] = tab.sessionStartedAt
+        persistedLogSignatures[tab.id] = tab.persistedLogSignature
     }
     
     private func addTab() {
         saveCurrentTabState()
         let tab = TerminalTabItem(name: "Sessão \(tabs.count + 1)")
         tabs.append(tab)
+        sessionStartDates[tab.id] = nil
+        persistedLogSignatures[tab.id] = nil
         selectedTabID = tab.id
         loadTab(tab)
     }
@@ -665,8 +671,11 @@ struct TerminalView: View {
     private func closeTab(_ id: UUID) {
         saveCurrentTabState()
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        persistLogIfNeeded(forTabID: id)
         tabs[index].manager.disconnect()
         tabs.remove(at: index)
+        sessionStartDates.removeValue(forKey: id)
+        persistedLogSignatures.removeValue(forKey: id)
         if tabs.isEmpty {
             selectedTabID = nil
             manager = TerminalConnectionManager()
@@ -697,6 +706,7 @@ struct TerminalView: View {
     
     private func toggleConnection() {
         if manager.isConnected {
+            persistLogIfNeeded(forTabID: selectedTabID)
             manager.disconnect()
         } else {
             connectUsingCurrentFields()
@@ -705,7 +715,12 @@ struct TerminalView: View {
     
     private func connectUsingCurrentFields() {
         ensureActiveTabForCurrentSession()
+        persistLogIfNeeded(forTabID: selectedTabID)
         manager.logs = ""
+        if let selectedTabID {
+            sessionStartDates[selectedTabID] = Date()
+            persistedLogSignatures[selectedTabID] = nil
+        }
         switch connectionType {
         case .ssh:
             manager.setSSHPassword(savedPassword)
@@ -726,7 +741,52 @@ struct TerminalView: View {
         let tab = TerminalTabItem(name: trimmedHost.isEmpty ? "Sessão 1" : trimmedHost)
         tabs.append(tab)
         selectedTabID = tab.id
+        sessionStartDates[tab.id] = nil
+        persistedLogSignatures[tab.id] = nil
         saveCurrentTabState()
+    }
+    
+    private func persistLogIfNeeded(forTabID tabID: UUID?) {
+        guard let tabID else { return }
+        saveCurrentTabState()
+        let activeTab = tabs.first(where: { $0.id == tabID })
+        let logSource = (selectedTabID == tabID ? manager.logs : activeTab?.manager.logs) ?? ""
+        let sanitized = logSource.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sanitized.isEmpty else { return }
+        
+        let activeConnectionType = activeTab?.connectionType ?? connectionType
+        let activeHost = activeTab?.host ?? host
+        let activePort = activeTab?.port ?? port
+        let activeUsername = activeTab?.username ?? username
+        let activeName = activeTab?.name ?? "Sessão"
+        let startedAt = sessionStartDates[tabID] ?? activeTab?.sessionStartedAt ?? Date()
+        let signature = "\(activeConnectionType.rawValue)|\(activeHost)|\(activePort)|\(activeUsername)|\(sanitized)"
+        
+        if persistedLogSignatures[tabID] == signature {
+            return
+        }
+        
+        let entry = TerminalSessionLogEntry(
+            id: UUID(),
+            title: activeName,
+            connectionType: activeConnectionType.rawValue,
+            host: activeHost,
+            port: activePort,
+            username: activeUsername,
+            startedAt: startedAt,
+            endedAt: Date(),
+            content: sanitized
+        )
+        savedSessionLogs.insert(entry, at: 0)
+        if savedSessionLogs.count > 150 {
+            savedSessionLogs = Array(savedSessionLogs.prefix(150))
+        }
+        persistedLogSignatures[tabID] = signature
+        if let index = tabs.firstIndex(where: { $0.id == tabID }) {
+            tabs[index].persistedLogSignature = signature
+            tabs[index].sessionStartedAt = startedAt
+        }
+        persistSessionLogCache()
     }
     
     private var selectedDevice: TerminalDeviceEntry? {
@@ -979,6 +1039,83 @@ struct TerminalView: View {
         if let data = try? JSONEncoder().encode(savedGroups) {
             UserDefaults.standard.set(data, forKey: TerminalDeviceGroupStore.storageKey)
         }
+    }
+    
+    private func reloadSnippets() {
+        guard let data = UserDefaults.standard.data(forKey: TerminalSnippetStore.storageKey),
+              let cached = try? JSONDecoder().decode([TerminalSnippetEntry].self, from: data) else {
+            savedSnippets = []
+            return
+        }
+        savedSnippets = cached.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+    
+    private func persistSnippetCache() {
+        if let data = try? JSONEncoder().encode(savedSnippets) {
+            UserDefaults.standard.set(data, forKey: TerminalSnippetStore.storageKey)
+        }
+    }
+    
+    private func saveSnippet(_ payload: TerminalSnippetPayload) {
+        let trimmedTitle = payload.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedCommand = payload.command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty, !trimmedCommand.isEmpty else { return }
+        
+        let entry = TerminalSnippetEntry(
+            id: editingSnippet?.id ?? UUID(),
+            title: trimmedTitle,
+            command: payload.command,
+            notes: payload.notes.trimmingCharacters(in: .whitespacesAndNewlines),
+            sendReturn: payload.sendReturn
+        )
+        
+        if let index = savedSnippets.firstIndex(where: { $0.id == entry.id }) {
+            savedSnippets[index] = entry
+        } else {
+            savedSnippets.append(entry)
+        }
+        savedSnippets.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        persistSnippetCache()
+        editingSnippet = nil
+    }
+    
+    private func deleteSnippet(_ snippet: TerminalSnippetEntry) {
+        savedSnippets.removeAll { $0.id == snippet.id }
+        persistSnippetCache()
+        if editingSnippet?.id == snippet.id {
+            editingSnippet = nil
+        }
+    }
+    
+    private func sendSnippet(_ snippet: TerminalSnippetEntry) {
+        guard manager.isConnected else { return }
+        let output = snippet.sendReturn ? snippet.command + "\n" : snippet.command
+        manager.sendRaw(output)
+    }
+    
+    private func reloadSessionLogs() {
+        guard let data = UserDefaults.standard.data(forKey: TerminalSessionLogStore.storageKey),
+              let cached = try? JSONDecoder().decode([TerminalSessionLogEntry].self, from: data) else {
+            savedSessionLogs = []
+            return
+        }
+        savedSessionLogs = cached.sorted { $0.endedAt > $1.endedAt }
+    }
+    
+    private func persistSessionLogCache() {
+        if let data = try? JSONEncoder().encode(savedSessionLogs) {
+            UserDefaults.standard.set(data, forKey: TerminalSessionLogStore.storageKey)
+        }
+    }
+    
+    private func deleteLogEntry(_ entry: TerminalSessionLogEntry) {
+        savedSessionLogs.removeAll { $0.id == entry.id }
+        persistSessionLogCache()
+    }
+    
+    private func clearSavedLogs() {
+        savedSessionLogs = []
+        persistSessionLogCache()
     }
     
     private func normalizedCredentialID(existing: String?) -> String {
