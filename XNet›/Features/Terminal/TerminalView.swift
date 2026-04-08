@@ -250,15 +250,13 @@ struct TerminalView: View {
                             }
                             .buttonStyle(.plain)
                             
-                            if tabs.count > 1 {
-                                Button {
-                                    closeTab(tab.id)
-                                } label: {
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 10, weight: .semibold))
-                                }
-                                .buttonStyle(.plain)
+                            Button {
+                                closeTab(tab.id)
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 10, weight: .semibold))
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
