@@ -542,32 +542,35 @@ struct TerminalView: View {
     }
     
     private func reloadSavedDevices() {
+        let descriptor = FetchDescriptor<TerminalDevice>(sortBy: [SortDescriptor(\.name, order: .forward)])
+        do {
+            let rows = try modelContext.fetch(descriptor)
+            if !rows.isEmpty {
+                savedDevices = rows.map {
+                    TerminalDeviceEntry(
+                        id: UUID(),
+                        name: $0.name,
+                        connectionType: $0.connectionType,
+                        host: $0.host,
+                        port: $0.port,
+                        username: $0.username,
+                        notes: $0.notes,
+                        credentialID: $0.credentialID
+                    )
+                }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                persistSavedDevicesCache()
+                return
+            }
+        } catch {
+            manager.logs += "\n[Database Fetch Error]: \(error.localizedDescription)\n"
+        }
+        
         if let data = UserDefaults.standard.data(forKey: TerminalDeviceEntry.storageKey),
            let cached = try? JSONDecoder().decode([TerminalDeviceEntry].self, from: data),
            !cached.isEmpty {
             savedDevices = cached.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-            return
-        }
-        
-        let descriptor = FetchDescriptor<TerminalDevice>(sortBy: [SortDescriptor(\.name, order: .forward)])
-        do {
-            let rows = try modelContext.fetch(descriptor)
-            savedDevices = rows.map {
-                TerminalDeviceEntry(
-                    id: UUID(),
-                    name: $0.name,
-                    connectionType: $0.connectionType,
-                    host: $0.host,
-                    port: $0.port,
-                    username: $0.username,
-                    notes: $0.notes,
-                    credentialID: $0.credentialID
-                )
-            }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-            persistSavedDevicesCache()
-        } catch {
+        } else {
             savedDevices = []
-            manager.logs += "\n[Database Fetch Error]: \(error.localizedDescription)\n"
         }
     }
     
@@ -650,7 +653,7 @@ private struct TerminalTabItem: Identifiable {
 private struct TerminalDeviceFormSheet: View {
     @Environment(\.dismiss) private var dismiss
     
-    let deviceToEdit: TerminalDevice?
+    let deviceToEdit: TerminalDeviceEntry?
     let onSave: (TerminalDevicePayload) -> Void
     
     @State private var name = ""
