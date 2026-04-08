@@ -213,7 +213,7 @@ class FTPConnectionManager {
                         }
                     }
                 } else {
-                    name = String(parts.last!)
+                    name = parts.last.map(String.init) ?? trLine
                 }
             } else if parts.count >= 4 && (parts[2] == "<DIR>" || Int64(parts[2]) != nil) {
                 isDir = parts[2] == "<DIR>"

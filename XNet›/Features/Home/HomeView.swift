@@ -359,9 +359,31 @@ struct DashboardData {
     }
     
     private func getGatewayAddress() -> String {
-        // No macOS, ler o gateway requer percorrer a routing table via sysctl.
-        // Simulando a lógica de descoberta real via comando 'route' se necessário.
-        return "192.168.1.1" // Placeholder p/ agora, mas Ip/Mask já são REAIS.
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/route")
+        process.arguments = ["-n", "get", "default"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return "---"
+        }
+        
+        guard process.terminationStatus == 0 else { return "---" }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else { return "---" }
+        for line in output.split(whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("gateway:") {
+                let value = trimmed.replacingOccurrences(of: "gateway:", with: "").trimmingCharacters(in: .whitespaces)
+                return value.isEmpty ? "---" : value
+            }
+        }
+        return "---"
     }
     
     private func fetchPublicIP() async -> String? {

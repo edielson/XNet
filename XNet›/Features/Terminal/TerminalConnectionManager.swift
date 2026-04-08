@@ -41,15 +41,10 @@ class TerminalConnectionManager {
             args.append(host)
         }
         
-        // Add options to avoid strict host key checking for quick diagnostic tool UX
         args.append("-o")
-        args.append("StrictHostKeyChecking=no")
-        args.append("-o")
-        args.append("UserKnownHostsFile=/dev/null")
-        // Suppress 'Permanently added... to known hosts' warning
+        args.append("StrictHostKeyChecking=accept-new")
         args.append("-o")
         args.append("LogLevel=ERROR")
-        // Force pseudo-terminal for interactive sessions (requires two -t sometimes)
         args.append("-tt")
         
         process.arguments = args
@@ -302,7 +297,7 @@ class TerminalConnectionManager {
     
     func sendRaw(_ string: String) {
         if let data = string.data(using: .utf8) {
-            if sshProcess != nil && sshProcess!.isRunning {
+            if let process = sshProcess, process.isRunning {
                 pipeIn?.fileHandleForWriting.write(data)
             } else if telnetConnection != nil && telnetConnection?.state == .ready {
                 telnetConnection?.send(content: data, completion: .contentProcessed({ error in

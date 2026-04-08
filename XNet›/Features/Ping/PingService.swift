@@ -83,14 +83,18 @@ class PingService {
                     let packetSize = MemoryLayout<ICMPHeader>.size + payloadData.count
                     var packet = Data(count: packetSize)
                     packet.withUnsafeMutableBytes { bytes in
-                        bytes.bindMemory(to: ICMPHeader.self).baseAddress!.pointee = header
+                        if let headerPointer = bytes.bindMemory(to: ICMPHeader.self).baseAddress {
+                            headerPointer.pointee = header
+                        }
                     }
                     packet.replaceSubrange(MemoryLayout<ICMPHeader>.size..<packetSize, with: payloadData)
                     
                     // CÁLCULO DE CHECKSUM MANUAL (Exigido em algumas versões do macOS para SOCK_DGRAM)
                     let cksum = PingService.calculateChecksum(data: packet)
                     packet.withUnsafeMutableBytes { bytes in
-                        bytes.bindMemory(to: ICMPHeader.self).baseAddress!.pointee.checksum = cksum
+                        if let headerPointer = bytes.bindMemory(to: ICMPHeader.self).baseAddress {
+                            headerPointer.pointee.checksum = cksum
+                        }
                     }
                     
                     var destAddr = sockaddr_in()
@@ -165,9 +169,10 @@ class PingService {
         hints.ai_socktype = SOCK_DGRAM
         
         var res: UnsafeMutablePointer<addrinfo>?
-        if getaddrinfo(host, nil, &hints, &res) == 0 {
-            let addr = res!.pointee.ai_addr!.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr.s_addr }
-            freeaddrinfo(res)
+        if getaddrinfo(host, nil, &hints, &res) == 0, let info = res {
+            defer { freeaddrinfo(info) }
+            guard let aiAddr = info.pointee.ai_addr else { return nil }
+            let addr = aiAddr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr.s_addr }
             return addr
         }
         return nil

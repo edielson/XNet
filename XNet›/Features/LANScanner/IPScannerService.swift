@@ -20,6 +20,16 @@ class IPScannerService {
                 continuation.finish()
                 return
             }
+            let socketLock = NSLock()
+            var socketClosed = false
+            let closeSocket = {
+                socketLock.lock()
+                defer { socketLock.unlock() }
+                if !socketClosed {
+                    Darwin.close(sockID)
+                    socketClosed = true
+                }
+            }
             
             var localAddr = sockaddr_in()
             localAddr.sin_family = sa_family_t(AF_INET)
@@ -114,13 +124,17 @@ class IPScannerService {
                     let payloadData = "XNet-V3-Engine".data(using: .utf8)!
                     var packet = Data(count: MemoryLayout<ICMPHeader>.size + payloadData.count)
                     packet.withUnsafeMutableBytes { bytes in
-                        bytes.bindMemory(to: ICMPHeader.self).baseAddress!.pointee = header
+                        if let headerPointer = bytes.bindMemory(to: ICMPHeader.self).baseAddress {
+                            headerPointer.pointee = header
+                        }
                     }
                     packet.replaceSubrange(MemoryLayout<ICMPHeader>.size..<packet.count, with: payloadData)
                     
                     let cksum = IPScannerService.calculateChecksum(data: packet)
                     packet.withUnsafeMutableBytes { bytes in
-                        bytes.bindMemory(to: ICMPHeader.self).baseAddress!.pointee.checksum = cksum
+                        if let headerPointer = bytes.bindMemory(to: ICMPHeader.self).baseAddress {
+                            headerPointer.pointee.checksum = cksum
+                        }
                     }
                     
                     _ = withUnsafePointer(to: &destAddr) { ptr in
@@ -137,13 +151,13 @@ class IPScannerService {
                 try? await Task.sleep(nanoseconds: 2_500_000_000) // Espera 2.5s para os atrasados
                 
                 cancelFlag.isCancelled = true
-                Darwin.close(sockID)
+                closeSocket()
                 continuation.finish()
             }
             
             continuation.onTermination = { @Sendable _ in
                 cancelFlag.isCancelled = true
-                Darwin.close(sockID)
+                closeSocket()
             }
         }
     }
@@ -185,7 +199,11 @@ class IPScannerService {
         
         var offset = 0
         while offset < len {
-            let msgPointer = buffer.withUnsafeBytes { $0.baseAddress!.advanced(by: offset) }
+            let maybePointer = buffer.withUnsafeBytes { bytes -> UnsafeRawPointer? in
+                guard let baseAddress = bytes.baseAddress else { return nil }
+                return baseAddress.advanced(by: offset)
+            }
+            guard let msgPointer = maybePointer else { return "N/A" }
             let rtm = msgPointer.assumingMemoryBound(to: rt_msghdr.self).pointee
             
             if offset + Int(rtm.rtm_msglen) > len { break }

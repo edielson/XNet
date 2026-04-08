@@ -82,12 +82,11 @@ class CustomTerminalTextView: NSTextView {
                 // If it's a standard character like '?', letters, numbers, etc.
                 if !chars.isEmpty && !event.modifierFlags.contains(.command) && !event.modifierFlags.contains(.control) {
                     onInput?(chars)
-                } else if event.modifierFlags.contains(.control) && !chars.isEmpty {
-                    // Provide basic support for Control-C etc (not robust but usually works by converting character to 1-26 ASCII)
-                    let firstChar = chars.utf16.first!
+                } else if event.modifierFlags.contains(.control) && !chars.isEmpty, let firstChar = chars.utf16.first {
                     if firstChar >= 97 && firstChar <= 122 {
-                        let ctrlChar = String(describing: UnicodeScalar(firstChar - 96)!)
-                        onInput?(ctrlChar)
+                        if let scalar = UnicodeScalar(firstChar - 96) {
+                            onInput?(String(scalar))
+                        }
                     }
                 }
             }

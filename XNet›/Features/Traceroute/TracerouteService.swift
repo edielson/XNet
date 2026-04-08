@@ -30,6 +30,16 @@ class TracerouteService {
                 continuation.finish()
                 return
             }
+            let socketLock = NSLock()
+            var socketClosed = false
+            let closeSocket = {
+                socketLock.lock()
+                defer { socketLock.unlock() }
+                if !socketClosed {
+                    Darwin.close(sockID)
+                    socketClosed = true
+                }
+            }
             
             // Bind the socket to port 0 to get an assigned ICMP identifier (mandatory for macOS)
             var localAddr = sockaddr_in()
@@ -76,12 +86,16 @@ class TracerouteService {
                         
                         var packet = Data(count: MemoryLayout<ICMPHeader>.size)
                         packet.withUnsafeMutableBytes { (bytes: UnsafeMutableRawBufferPointer) in
-                            bytes.bindMemory(to: ICMPHeader.self).baseAddress!.pointee = header
+                            if let headerPointer = bytes.bindMemory(to: ICMPHeader.self).baseAddress {
+                                headerPointer.pointee = header
+                            }
                         }
                         
                         let cksum = TracerouteService.calculateChecksum(data: packet)
                         packet.withUnsafeMutableBytes { (bytes: UnsafeMutableRawBufferPointer) in
-                            bytes.bindMemory(to: ICMPHeader.self).baseAddress!.pointee.checksum = cksum.bigEndian
+                            if let headerPointer = bytes.bindMemory(to: ICMPHeader.self).baseAddress {
+                                headerPointer.pointee.checksum = cksum.bigEndian
+                            }
                         }
                         
                         var addr = sockaddr_in()
@@ -91,7 +105,9 @@ class TracerouteService {
                         
                         let sent = withUnsafePointer(to: &addr) {
                             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                                Darwin.sendto(sockID, (packet as Data).withUnsafeBytes { $0.baseAddress! }, packet.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                                packet.withUnsafeBytes { packetBytes in
+                                    Darwin.sendto(sockID, packetBytes.baseAddress, packet.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                                }
                             }
                         }
                         
@@ -138,13 +154,13 @@ class TracerouteService {
                     
                     if hopIP != "*" && hopIP == hostIPString(resolvedAddress) { break }
                 }
-                Darwin.close(sockID)
+                closeSocket()
                 continuation.finish()
             }
             
             continuation.onTermination = { @Sendable _ in
                 task.cancel()
-                Darwin.close(sockID)
+                closeSocket()
             }
         }
     }
