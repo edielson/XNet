@@ -535,6 +535,7 @@ struct TerminalView: View {
         }
         
         syncEntryToDatabase(entry)
+        NotificationCenter.default.post(name: Notification.Name("TerminalDevicesUpdated"), object: nil)
         editingDevice = nil
     }
     
@@ -559,6 +560,7 @@ struct TerminalView: View {
         if selectedDeviceID == device.id {
             selectedDeviceID = nil
         }
+        NotificationCenter.default.post(name: Notification.Name("TerminalDevicesUpdated"), object: nil)
     }
     
     private func reloadSavedDevices() {

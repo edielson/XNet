@@ -67,6 +67,9 @@ struct FTPView: View {
         .onAppear {
             loadRegisteredDevices()
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("TerminalDevicesUpdated"))) { _ in
+            loadRegisteredDevices()
+        }
     }
     
     private var headerSection: some View {
@@ -347,7 +350,14 @@ struct FTPView: View {
     
     private func loadRegisteredDevices() {
         let descriptor = FetchDescriptor<TerminalDevice>(sortBy: [SortDescriptor(\.groupName, order: .forward), SortDescriptor(\.name, order: .forward)])
-        registeredDevices = (try? modelContext.fetch(descriptor)) ?? []
+        let rows = (try? modelContext.fetch(descriptor)) ?? []
+        if !rows.isEmpty {
+            registeredDevices = rows
+        } else if let cached = cachedTransferDevices(), !cached.isEmpty {
+            registeredDevices = cached
+        } else {
+            registeredDevices = []
+        }
         if !availableGroupFilters.contains(selectedGroupFilter) {
             selectedGroupFilter = "Todos"
         }
@@ -398,16 +408,6 @@ struct FTPView: View {
     private func resolvedPort(for device: TerminalDevice, protocolType: TransferProtocolType) -> String {
         let trimmedPort = device.port.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedPort.isEmpty {
-            let type = device.connectionType.uppercased()
-            if protocolType == .sftp && (type == "SSH" || type == "TELNET") {
-                return "22"
-            }
-            if protocolType == .scp && (type == "SSH" || type == "TELNET") {
-                return "22"
-            }
-            if protocolType == .ftp && type == "SSH" {
-                return "21"
-            }
             return trimmedPort
         }
         switch protocolType {
@@ -466,6 +466,28 @@ struct FTPView: View {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Geral" : trimmed
     }
+    
+    private func cachedTransferDevices() -> [TerminalDevice]? {
+        let decoder = JSONDecoder()
+        for key in [TransferDeviceCacheEntry.storageKeyV3, TransferDeviceCacheEntry.storageKeyV2] {
+            guard let data = UserDefaults.standard.data(forKey: key),
+                  let cached = try? decoder.decode([TransferDeviceCacheEntry].self, from: data),
+                  !cached.isEmpty else { continue }
+            return cached.map {
+                TerminalDevice(
+                    name: $0.name,
+                    groupName: normalizedGroupName($0.groupName),
+                    connectionType: $0.connectionType,
+                    host: $0.host,
+                    port: $0.port,
+                    username: $0.username,
+                    notes: $0.notes,
+                    credentialID: $0.credentialID
+                )
+            }
+        }
+        return nil
+    }
 }
 
 // MARK: - Models
@@ -483,6 +505,43 @@ enum SortOption: String, CaseIterable, Identifiable {
     case name = "Name"
     case date = "Date"
     var id: String { self.rawValue }
+}
+
+private struct TransferDeviceCacheEntry: Decodable {
+    static let storageKeyV3 = "terminal.device.cache.v3"
+    static let storageKeyV2 = "terminal.device.cache.v2"
+    
+    let name: String
+    let groupName: String
+    let connectionType: String
+    let host: String
+    let port: String
+    let username: String
+    let notes: String
+    let credentialID: String
+    
+    enum CodingKeys: String, CodingKey {
+        case name
+        case groupName
+        case connectionType
+        case host
+        case port
+        case username
+        case notes
+        case credentialID
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        groupName = try container.decodeIfPresent(String.self, forKey: .groupName) ?? "Geral"
+        connectionType = try container.decode(String.self, forKey: .connectionType)
+        host = try container.decode(String.self, forKey: .host)
+        port = try container.decode(String.self, forKey: .port)
+        username = try container.decode(String.self, forKey: .username)
+        notes = try container.decode(String.self, forKey: .notes)
+        credentialID = try container.decode(String.self, forKey: .credentialID)
+    }
 }
 
 // MARK: - Local Browser
