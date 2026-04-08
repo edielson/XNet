@@ -18,7 +18,7 @@ struct TerminalView: View {
     @State private var editingDevice: TerminalDeviceEntry?
     @State private var isApplyingSavedDevice = false
     @State private var isDeviceListVisible = true
-    @State private var tabs: [TerminalTabItem] = [TerminalTabItem(name: "Aba 1")]
+    @State private var tabs: [TerminalTabItem] = []
     @State private var selectedTabID: UUID? = nil
     
     enum ConnectionType: String, CaseIterable, Identifiable {
@@ -96,34 +96,6 @@ struct TerminalView: View {
                     }
                 }
                 
-                // Connection Input Bar
-                HStack(spacing: 16) {
-                    HStack(spacing: 12) {
-                        if connectionType == .serial {
-                            serialFieldsCompact
-                        } else {
-                            networkFieldsCompact
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color(NSColor.textBackgroundColor))
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-                    )
-                    
-                    Spacer(minLength: 0)
-                    
-                    Button(action: { host = ""; username = ""; savedPassword = ""; manager.logs = "" }) {
-                        Image(systemName: "broom.fill")
-                            .foregroundStyle(.secondary)
-                            .font(.system(size: 14))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Clear Terminal & Fields")
-                }
             }
             .padding(.horizontal, 28)
             .padding(.top, 32)
@@ -146,30 +118,67 @@ struct TerminalView: View {
                         Divider()
                         
                         List(savedDevices, selection: $selectedDeviceID) { device in
-                            Button {
-                                selectedDeviceID = device.id
-                                openDeviceInNewTab(device)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 10) {
+                                VStack(alignment: .leading, spacing: 4) {
                                     Text(device.name)
                                         .font(.system(size: 13, weight: .semibold))
-                                    Text("\(device.connectionType) • \(device.host):\(device.port)")
+                                        .lineLimit(1)
+                                    Text(device.connectionType)
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(.blue)
+                                    Text("\(device.host):\(device.port)")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                        .lineLimit(1)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    selectedDeviceID = device.id
+                                }
+                                
+                                HStack(spacing: 6) {
+                                    Button {
+                                        selectedDeviceID = device.id
+                                        editingDevice = device
+                                        showingDeviceForm = true
+                                    } label: {
+                                        Image(systemName: "square.and.pencil")
+                                            .font(.system(size: 11, weight: .semibold))
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.mini)
+                                    
+                                    Button {
+                                        selectedDeviceID = device.id
+                                        openDeviceInNewTab(device)
+                                    } label: {
+                                        Image(systemName: "terminal.fill")
+                                            .font(.system(size: 11, weight: .semibold))
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.mini)
+                                }
                             }
-                            .buttonStyle(.plain)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 4)
+                            .background(selectedDeviceID == device.id ? Color.accentColor.opacity(0.16) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                             .contextMenu {
                                 Button("Editar") {
                                     selectedDeviceID = device.id
                                     editingDevice = device
                                     showingDeviceForm = true
                                 }
+                                Button("Conectar") {
+                                    selectedDeviceID = device.id
+                                    openDeviceInNewTab(device)
+                                }
                                 Button("Excluir", role: .destructive) {
                                     deleteDevice(device)
                                 }
                             }
+                            .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
                         }
                         .listStyle(.plain)
                     }
@@ -194,10 +203,6 @@ struct TerminalView: View {
         }
         .navigationTitle("")
         .onAppear {
-            if selectedTabID == nil, let first = tabs.first {
-                selectedTabID = first.id
-                loadTab(first)
-            }
             reloadSavedDevices()
             if connectionType == .serial {
                 availableSerialPorts = manager.getAvailableSerialPorts()
@@ -268,90 +273,6 @@ struct TerminalView: View {
         }
     }
     
-    private var networkFieldsCompact: some View {
-        HStack(spacing: 16) {
-            HStack(spacing: 4) {
-                Image(systemName: "server.rack")
-                    .foregroundStyle(.secondary)
-                    .font(.system(size: 10))
-                TextField("Host", text: $host)
-                    .textFieldStyle(.plain)
-                    .frame(width: 120)
-            }
-            
-            Divider().frame(height: 12)
-            
-            HStack(spacing: 4) {
-                Image(systemName: "number")
-                    .foregroundStyle(.secondary)
-                    .font(.system(size: 10))
-                TextField("Port", text: $port)
-                    .textFieldStyle(.plain)
-                    .frame(width: 40)
-            }
-            
-            if connectionType == .ssh {
-                Divider().frame(height: 12)
-                HStack(spacing: 4) {
-                    Image(systemName: "person.fill")
-                        .foregroundStyle(.secondary)
-                        .font(.system(size: 10))
-                    TextField("User", text: $username)
-                        .textFieldStyle(.plain)
-                        .frame(width: 80)
-                }
-            }
-            
-            if connectionType != .serial {
-                Divider().frame(height: 12)
-                HStack(spacing: 4) {
-                    Image(systemName: "lock.fill")
-                        .foregroundStyle(.secondary)
-                        .font(.system(size: 10))
-                    SecureField("Senha", text: $savedPassword)
-                        .textFieldStyle(.plain)
-                        .frame(width: 100)
-                }
-            }
-        }
-    }
-    
-    private var serialFieldsCompact: some View {
-        HStack(spacing: 16) {
-            HStack(spacing: 4) {
-                Image(systemName: "cable.connector")
-                    .foregroundStyle(.secondary)
-                    .font(.system(size: 10))
-                Picker("", selection: $host) {
-                    if availableSerialPorts.isEmpty {
-                        Text("No devices").tag("")
-                    } else {
-                        ForEach(availableSerialPorts, id: \.self) { p in
-                            Text(p.replacingOccurrences(of: "/dev/cu.", with: "")).tag(p)
-                        }
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .frame(width: 140)
-            }
-            
-            Divider().frame(height: 12)
-            
-            HStack(spacing: 4) {
-                Image(systemName: "speedometer")
-                    .foregroundStyle(.secondary)
-                    .font(.system(size: 10))
-                Picker("", selection: $port) {
-                    ForEach(["9600", "115200", "230400", "921600"], id: \.self) { Text($0).tag($0) }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .frame(width: 100)
-            }
-        }
-    }
-
     private var terminalPlaceholder: some View {
         VStack(spacing: 20) {
             Image(systemName: "powershell")
@@ -390,17 +311,27 @@ struct TerminalView: View {
     
     private func addTab() {
         saveCurrentTabState()
-        let tab = TerminalTabItem(name: "Aba \(tabs.count + 1)")
+        let tab = TerminalTabItem(name: "Sessão \(tabs.count + 1)")
         tabs.append(tab)
         selectedTabID = tab.id
         loadTab(tab)
     }
     
     private func closeTab(_ id: UUID) {
-        guard tabs.count > 1 else { return }
         saveCurrentTabState()
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        tabs[index].manager.disconnect()
         tabs.remove(at: index)
+        if tabs.isEmpty {
+            selectedTabID = nil
+            manager = TerminalConnectionManager()
+            host = ""
+            port = "22"
+            username = ""
+            savedPassword = ""
+            availableSerialPorts = []
+            return
+        }
         if selectedTabID == id {
             let fallback = tabs[min(index, tabs.count - 1)]
             selectedTabID = fallback.id
@@ -428,6 +359,7 @@ struct TerminalView: View {
     }
     
     private func connectUsingCurrentFields() {
+        ensureActiveTabForCurrentSession()
         manager.logs = ""
         switch connectionType {
         case .ssh:
@@ -443,6 +375,15 @@ struct TerminalView: View {
         }
     }
     
+    private func ensureActiveTabForCurrentSession() {
+        guard selectedTabID == nil else { return }
+        let trimmedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tab = TerminalTabItem(name: trimmedHost.isEmpty ? "Sessão 1" : trimmedHost)
+        tabs.append(tab)
+        selectedTabID = tab.id
+        saveCurrentTabState()
+    }
+    
     private var selectedDevice: TerminalDeviceEntry? {
         guard let selectedDeviceID else { return nil }
         return savedDevices.first(where: { $0.id == selectedDeviceID })
@@ -454,7 +395,8 @@ struct TerminalView: View {
         host = device.host
         port = device.port
         username = device.username
-        savedPassword = TerminalPasswordStore.readPassword(credentialID: device.credentialID) ?? ""
+        let normalizedCredentialID = normalizedCredentialID(for: device)
+        savedPassword = TerminalPasswordStore.readPassword(credentialID: normalizedCredentialID) ?? ""
         if connectionType == .serial {
             availableSerialPorts = manager.getAvailableSerialPorts()
             if !availableSerialPorts.contains(host), !host.isEmpty {
@@ -488,7 +430,7 @@ struct TerminalView: View {
     }
     
     private func saveDevice(_ payload: TerminalDevicePayload) {
-        let credentialID = editingDevice?.credentialID ?? UUID().uuidString
+        let credentialID = normalizedCredentialID(existing: editingDevice?.credentialID)
         let entry = TerminalDeviceEntry(
             id: editingDevice?.id ?? UUID(),
             name: payload.name,
@@ -512,7 +454,10 @@ struct TerminalView: View {
         if payload.password.isEmpty {
             TerminalPasswordStore.deletePassword(credentialID: credentialID)
         } else {
-            TerminalPasswordStore.savePassword(payload.password, credentialID: credentialID)
+            let saved = TerminalPasswordStore.savePassword(payload.password, credentialID: credentialID)
+            if !saved {
+                manager.logs += "\n[Credential Save Error]\n"
+            }
         }
         
         syncEntryToDatabase(entry)
@@ -607,6 +552,16 @@ struct TerminalView: View {
         if let data = try? JSONEncoder().encode(savedDevices) {
             UserDefaults.standard.set(data, forKey: TerminalDeviceEntry.storageKey)
         }
+    }
+    
+    private func normalizedCredentialID(existing: String?) -> String {
+        let trimmed = existing?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? UUID().uuidString : trimmed
+    }
+    
+    private func normalizedCredentialID(for entry: TerminalDeviceEntry) -> String {
+        let trimmed = entry.credentialID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "\(entry.connectionType)|\(entry.host)|\(entry.port)|\(entry.username)" : trimmed
     }
 }
 
@@ -742,17 +697,29 @@ private struct TerminalDeviceFormSheet: View {
 private enum TerminalPasswordStore {
     private static let service = "br.com.myrouter.xnet.terminal.password"
     
-    static func savePassword(_ password: String, credentialID: String) {
-        guard let data = password.data(using: .utf8) else { return }
-        deletePassword(credentialID: credentialID)
-        
+    static func savePassword(_ password: String, credentialID: String) -> Bool {
+        guard let data = password.data(using: .utf8) else { return false }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: credentialID,
             kSecValueData as String: data
         ]
-        SecItemAdd(query as CFDictionary, nil)
+        let addStatus = SecItemAdd(query as CFDictionary, nil)
+        if addStatus == errSecSuccess {
+            return true
+        }
+        if addStatus == errSecDuplicateItem {
+            let matchQuery: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccount as String: credentialID
+            ]
+            let attrs: [String: Any] = [kSecValueData as String: data]
+            let updateStatus = SecItemUpdate(matchQuery as CFDictionary, attrs as CFDictionary)
+            return updateStatus == errSecSuccess
+        }
+        return false
     }
     
     static func readPassword(credentialID: String) -> String? {

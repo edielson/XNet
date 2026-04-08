@@ -216,28 +216,40 @@ class TerminalConnectionManager {
             }
         }
         self.logs = current
+        attemptAutoCredentialInjection(latestChunk: newString, currentLog: current)
+    }
+
+    private func attemptAutoCredentialInjection(latestChunk: String, currentLog: String) {
+        let promptFoundInChunk = containsPasswordPrompt(latestChunk)
+        let promptFoundInTail = containsPasswordPrompt(String(currentLog.suffix(180)))
+        let shouldInject = promptFoundInChunk || promptFoundInTail
+        guard shouldInject else { return }
         
         if let process = sshProcess,
            process.isRunning,
            !didSendSSHPassword,
            let password = autoSSHPassword,
-           !password.isEmpty,
-           containsPasswordPrompt(newString) {
+           !password.isEmpty {
             didSendSSHPassword = true
             sendRaw(password + "\n")
-        } else if telnetConnection?.state == .ready,
-                  !didSendTelnetPassword,
-                  let password = autoTelnetPassword,
-                  !password.isEmpty,
-                  containsPasswordPrompt(newString) {
+            return
+        }
+        
+        if telnetConnection?.state == .ready,
+           !didSendTelnetPassword,
+           let password = autoTelnetPassword,
+           !password.isEmpty {
             didSendTelnetPassword = true
             sendRaw(password + "\n")
         }
     }
-
+    
     private func containsPasswordPrompt(_ text: String) -> Bool {
         let lower = text.lowercased()
-        return lower.contains("password:") || lower.contains("password ")
+        return lower.contains("password:")
+            || lower.contains("password ")
+            || lower.contains("'s password:")
+            || lower.contains("senha:")
     }
 
     private func filterTelnetCommands(from data: Data) -> Data {
